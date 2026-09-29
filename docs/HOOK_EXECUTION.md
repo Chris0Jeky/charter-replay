@@ -35,3 +35,24 @@ The JSON report stays free of machine-local reproduction paths. The existing
 kernel Markdown includes local reproduction argv, and legacy report timestamps
 still require `SOURCE_DATE_EPOCH` for byte-identical reruns. Timing remains an
 observation, not part of decision identity.
+
+## Event workspace isolation
+
+Every event receives its own fresh workspace, including a fresh copy of a
+template when supplied. Serial and parallel workers preserve input order but
+share no writable replay workspace. The process cwd equals the payload cwd
+inside that event's workspace; `CLAUDE_PROJECT_DIR` still names its root. A
+resolved cwd outside that root is rejected before invocation.
+
+The recorder reuses the kernel's read-only-aware cleanup on every event,
+including error paths. A partial template copy is removed when preparation
+fails. Preparation failures become recorded indeterminate source failures.
+If cleanup fails after a real hook reply, that reply is retained and an explicit
+`hook-workspace-cleanup-failed` source failure makes the comparison an error
+and returns exit 3. Cleanup failure does not manufacture a different decision.
+
+Copying a large template per event costs IO. This is an intentional correctness
+trade-off. Templates are caller-trusted input, not immutable identity-bound
+snapshots yet. An unsandboxed hook can still access shared external state such
+as its home directory, the network or absolute paths; workspace isolation does
+not claim to isolate the entire machine or certify hook determinism.
