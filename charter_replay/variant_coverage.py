@@ -101,9 +101,7 @@ def _counts() -> dict[str, int]:
     return dict.fromkeys(DIFF_CLASSES, 0)
 
 
-def _aggregate(
-    compared: ComparisonResult, lineage: dict[str, Any]
-) -> dict[str, Any]:
+def _aggregate(compared: ComparisonResult, lineage: dict[str, Any]) -> dict[str, Any]:
     links = {link["event_id"]: link for link in lineage["mappings"]}
     results = {result.event["event_id"]: result for result in compared.results}
     by_origin = {"seed": _counts(), "derived": _counts()}

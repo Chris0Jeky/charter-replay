@@ -101,7 +101,11 @@ class VariantCoverageTests(unittest.TestCase):
         result = self.coverage()
         text = json.dumps(result)
         for secret in (
-            "private-", "seed-0", "git push", "fixture", self.report["run_id"]
+            "private-",
+            "seed-0",
+            "git push",
+            "fixture",
+            self.report["run_id"],
         ):
             self.assertNotIn(secret, text)
         self.assertNotIn(str(self.root), text)
@@ -200,7 +204,8 @@ class VariantCoverageTests(unittest.TestCase):
 
     def test_unchanged_diff_can_still_have_within_policy_shape_disagreement(self):
         row = next(
-            row for row in self.report["results"]
+            row
+            for row in self.report["results"]
             if row["event"]["command"].startswith("'git'")
             and row["case"]["case_class"] == "dangerous"
         )
