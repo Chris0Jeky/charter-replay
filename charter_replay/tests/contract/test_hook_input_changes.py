@@ -79,7 +79,9 @@ class HookInputChangeTests(unittest.TestCase):
         self.assertEqual(summary["failures"][0]["code"], "hook-input-changed")
         self.assertNotIn(str(self.root), json.dumps(summary))
 
-    def test_deleted_script_does_not_replace_original_fingerprint_with_a_path_word(self):
+    def test_deleted_script_does_not_replace_original_fingerprint_with_a_path_word(
+        self,
+    ):
         def remove(*args, **kwargs):
             self.script.unlink()
             return self.allow
@@ -183,14 +185,15 @@ class HookInputChangeTests(unittest.TestCase):
             "path.write_bytes(path.read_bytes() + b'# self-modified\\n')\n",
             encoding="utf-8",
         )
-        initial = hooks.hook_identity(self.spec.argv)
+        command = json.dumps(self.spec.argv)
+        initial = hooks.hook_identity(hooks.parse_hook_command(command))
         stream = io.StringIO()
         with redirect_stdout(stream):
             code = app.main(
                 [
                     "record",
                     "--hook",
-                    json.dumps(self.spec.argv),
+                    command,
                     "--corpus",
                     str(self.corpus()),
                     "--output",
