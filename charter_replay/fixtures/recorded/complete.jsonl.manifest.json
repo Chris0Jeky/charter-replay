@@ -1,0 +1,8 @@
+{
+  "schema_version": "recorded-policy-manifest.v1",
+  "policy_id": "floor-v1-final",
+  "policy_commit": "02bd14cfe094f9b6af85b966de481ff3f45264cf",
+  "decisions_file": "complete.jsonl",
+  "decisions_sha256": "85c298d710f7a8c91957a7b9c0b8ee96d08a37c8f15becc6fd9bc38b3dfce28b",
+  "decision_count": 2
+}

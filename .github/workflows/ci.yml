@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests (${{ matrix.os }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit, contract and charter tests
+        run: python -m unittest discover -s charter_replay/tests -v
+      - name: Install into a clean environment and replay the README example
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check .
+          set +e
+          charter-replay hooks \
+            --baseline "python examples/toy-guard/guard_v1.py" \
+            --candidate "python examples/toy-guard/guard_v2.py" \
+            --corpus charter_replay/corpora/charter --output "$RUNNER_TEMP/demo"
+          code=$?
+          set -e
+          test "$code" -eq 1
+          # Exit 1 alone could be a crash; the summary proves the comparison ran.
+          grep -q '"newly-allowed": 4' "$RUNNER_TEMP/demo"/summary.json
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --disable-pip-version-check "black==26.3.1" "ruff==0.15.13"
+      - run: python -m ruff check charter_replay examples
+      - run: python -m black --check --diff charter_replay examples
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --disable-pip-version-check build
+      - run: python -m build
+      - name: The wheel carries no tests and no private corpus
+        shell: bash
+        run: |
+          python -m zipfile -l dist/*.whl > listing.txt
+          ! grep -E "tests/|private-corpus" listing.txt

@@ -1,0 +1,8 @@
+{
+  "schema_version": "recorded-policy-manifest.v1",
+  "policy_id": "candidate-hook",
+  "policy_commit": "978889c16d2abb7a7ea46a9f7539372b2b548708",
+  "decisions_file": "decisions.jsonl",
+  "decisions_sha256": "4f9ee24a8d95e684547c2d6a0705285ea97e74a0d8d950f49cff712b4b5c5ca7",
+  "decision_count": 50
+}

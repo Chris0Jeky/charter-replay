@@ -1,0 +1,8 @@
+{
+  "schema_version": "recorded-policy-manifest.v1",
+  "policy_id": "baseline-hook",
+  "policy_commit": "fb7dbff8a1ce75a395b284b70b9fe9c67d39fff4",
+  "decisions_file": "decisions.jsonl",
+  "decisions_sha256": "2cc8caf1b6f3db4d04d80201876d0840e87452dfa0e9bcd558eae8d7d7838cb3",
+  "decision_count": 50
+}

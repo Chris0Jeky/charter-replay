@@ -1,0 +1,145 @@
+{
+  "by_case_class": {
+    "benign": {
+      "newly-allowed": 3,
+      "unchanged": 17
+    },
+    "dangerous": {
+      "newly-allowed": 1,
+      "newly-denied": 1,
+      "unchanged": 18
+    },
+    "opaque": {
+      "unchanged": 10
+    }
+  },
+  "by_case_family": {
+    "batch-wrapper": {
+      "unchanged": 1
+    },
+    "cluster-destruction": {
+      "newly-allowed": 1,
+      "unchanged": 1
+    },
+    "configured-push": {
+      "unchanged": 2
+    },
+    "container-data-loss": {
+      "unchanged": 2
+    },
+    "database-destruction": {
+      "unchanged": 2
+    },
+    "file-overwrite": {
+      "unchanged": 2
+    },
+    "file-truncation": {
+      "unchanged": 4
+    },
+    "filesystem-destruction": {
+      "unchanged": 4
+    },
+    "follow-tags": {
+      "unchanged": 1
+    },
+    "history-rewrite": {
+      "unchanged": 2
+    },
+    "infrastructure-destruction": {
+      "unchanged": 2
+    },
+    "interpreter-wrapper": {
+      "unchanged": 1
+    },
+    "public-leak": {
+      "unchanged": 2
+    },
+    "public-visibility": {
+      "unchanged": 2
+    },
+    "receive-pack-wrapper": {
+      "unchanged": 1
+    },
+    "recovery-data-loss": {
+      "unchanged": 2
+    },
+    "remote-data-destruction": {
+      "unchanged": 2
+    },
+    "remote-wrapper": {
+      "unchanged": 1
+    },
+    "script-wrapper": {
+      "unchanged": 1
+    },
+    "secret-exposure": {
+      "unchanged": 2
+    },
+    "separate-git-dir": {
+      "unchanged": 1
+    },
+    "shared-history-rewrite": {
+      "newly-denied": 1,
+      "unchanged": 3
+    },
+    "shared-ref-deletion": {
+      "unchanged": 2
+    },
+    "variable-wrapper": {
+      "unchanged": 1
+    },
+    "worktree-loss": {
+      "newly-allowed": 3,
+      "unchanged": 1
+    }
+  },
+  "counts": {
+    "newly-allowed": 4,
+    "newly-denied": 1,
+    "newly-indeterminate": 0,
+    "resolved-indeterminate": 0,
+    "unchanged": 45
+  },
+  "effects": {
+    "baseline": {
+      "allow": 41,
+      "deny": 9
+    },
+    "candidate": {
+      "allow": 44,
+      "deny": 6
+    }
+  },
+  "gate": {
+    "fail_on": [
+      "newly-allowed",
+      "newly-indeterminate"
+    ],
+    "status": "fail",
+    "triggered": [
+      "newly-allowed"
+    ]
+  },
+  "outcomes": {
+    "baseline": {
+      "allow": 41,
+      "ask": 0,
+      "crash": 0,
+      "deny": 9,
+      "invalid-output": 0,
+      "start-failed": 0,
+      "stop": 0,
+      "timeout": 0
+    },
+    "candidate": {
+      "allow": 44,
+      "ask": 0,
+      "crash": 0,
+      "deny": 6,
+      "invalid-output": 0,
+      "start-failed": 0,
+      "stop": 0,
+      "timeout": 0
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{"schema_version":"policy-decision.v1","event_id":"danger-force-push-main","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-force-lease-release","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-reset-hard","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-clean-ignored","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-remove-tree-powershell","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-remove-tree-posix","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-overwrite-config","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-copy-sensitive-file","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-push-private-tag","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-make-repo-public","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-filter-rewrite","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-delete-remote-main","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-drop-records-table","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-delete-namespace","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-terraform-destroy","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-purge-archive-remote","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-remove-database-volume","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-truncate-ledger","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-empty-ledger-powershell","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"danger-expire-reflogs","effect":"deny","reason":"Synthetic charter baseline expects denial at the catastrophe boundary."}
+{"schema_version":"policy-decision.v1","event_id":"benign-force-push-help","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-force-lease-dry-run","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-reset-help","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-clean-dry-run","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-remove-tree-quoted","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-remove-tree-printed","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-copy-whatif","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-inspect-sensitive-file","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-show-private-tag","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-view-visibility","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-filter-help","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-delete-remote-dry-run","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-psql-help","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-delete-namespace-dry-run","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-terraform-destroy-plan","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-list-archive-remote","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-inspect-database-volume","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-stat-ledger","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-read-ledger","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"benign-show-reflogs","effect":"allow","reason":"Synthetic charter baseline expects this non-executing near-miss to be allowed."}
+{"schema_version":"policy-decision.v1","event_id":"opaque-configured-push","effect":"indeterminate","reason":"Synthetic charter baseline leaves this sanitized historical shape indeterminate."}
+{"schema_version":"policy-decision.v1","event_id":"opaque-remote-only-push","effect":"indeterminate","reason":"Synthetic charter baseline leaves this sanitized historical shape indeterminate."}
+{"schema_version":"policy-decision.v1","event_id":"opaque-follow-tags-push","effect":"indeterminate","reason":"Synthetic charter baseline leaves this sanitized historical shape indeterminate."}
+{"schema_version":"policy-decision.v1","event_id":"opaque-receive-pack-wrapper","effect":"indeterminate","reason":"Synthetic charter baseline leaves this sanitized historical shape indeterminate."}
+{"schema_version":"policy-decision.v1","event_id":"opaque-separate-git-dir","effect":"indeterminate","reason":"Synthetic charter baseline leaves this sanitized historical shape indeterminate."}
+{"schema_version":"policy-decision.v1","event_id":"opaque-powershell-variable","effect":"indeterminate","reason":"Synthetic charter baseline leaves this sanitized historical shape indeterminate."}
+{"schema_version":"policy-decision.v1","event_id":"opaque-shell-script","effect":"indeterminate","reason":"Synthetic charter baseline leaves this sanitized historical shape indeterminate."}
+{"schema_version":"policy-decision.v1","event_id":"opaque-python-script","effect":"indeterminate","reason":"Synthetic charter baseline leaves this sanitized historical shape indeterminate."}
+{"schema_version":"policy-decision.v1","event_id":"opaque-remote-wrapper","effect":"indeterminate","reason":"Synthetic charter baseline leaves this sanitized historical shape indeterminate."}
+{"schema_version":"policy-decision.v1","event_id":"opaque-batch-wrapper","effect":"indeterminate","reason":"Synthetic charter baseline leaves this sanitized historical shape indeterminate."}

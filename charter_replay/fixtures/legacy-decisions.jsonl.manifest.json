@@ -1,0 +1,8 @@
+{
+  "schema_version": "recorded-policy-manifest.v1",
+  "policy_id": "floor-v1-freeze-candidate-synthetic",
+  "policy_commit": "02bd14cfe094f9b6af85b966de481ff3f45264cf",
+  "decisions_file": "legacy-decisions.jsonl",
+  "decisions_sha256": "601faec1acc1e765fbee09c5313b2e6dc123d5f57cbf764984b77a367af37be6",
+  "decision_count": 50
+}

@@ -1,0 +1,50 @@
+{"schema_version":"policy-decision.v1","event_id":"danger-force-push-main","effect":"deny","reason":"deny: toy guard v2: matched a denylist rule"}
+{"schema_version":"policy-decision.v1","event_id":"danger-force-lease-release","effect":"deny","reason":"deny: toy guard v2: matched a denylist rule"}
+{"schema_version":"policy-decision.v1","event_id":"danger-reset-hard","effect":"deny","reason":"deny: toy guard v2: matched a denylist rule"}
+{"schema_version":"policy-decision.v1","event_id":"danger-clean-ignored","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-remove-tree-powershell","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-remove-tree-posix","effect":"deny","reason":"deny: toy guard v2: matched a denylist rule"}
+{"schema_version":"policy-decision.v1","event_id":"danger-overwrite-config","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-copy-sensitive-file","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-push-private-tag","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-make-repo-public","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-filter-rewrite","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-delete-remote-main","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-drop-records-table","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-delete-namespace","effect":"deny","reason":"deny: toy guard v2: matched a denylist rule"}
+{"schema_version":"policy-decision.v1","event_id":"danger-terraform-destroy","effect":"deny","reason":"deny: toy guard v2: matched a denylist rule"}
+{"schema_version":"policy-decision.v1","event_id":"danger-purge-archive-remote","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-remove-database-volume","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-truncate-ledger","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-empty-ledger-powershell","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"danger-expire-reflogs","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-force-push-help","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-force-lease-dry-run","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-reset-help","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-clean-dry-run","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-remove-tree-quoted","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-remove-tree-printed","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-copy-whatif","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-inspect-sensitive-file","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-show-private-tag","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-view-visibility","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-filter-help","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-delete-remote-dry-run","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-psql-help","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-delete-namespace-dry-run","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-terraform-destroy-plan","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-list-archive-remote","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-inspect-database-volume","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-stat-ledger","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-read-ledger","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"benign-show-reflogs","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"opaque-configured-push","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"opaque-remote-only-push","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"opaque-follow-tags-push","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"opaque-receive-pack-wrapper","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"opaque-separate-git-dir","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"opaque-powershell-variable","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"opaque-shell-script","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"opaque-python-script","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"opaque-remote-wrapper","effect":"allow","reason":"allow: exit 0, no output"}
+{"schema_version":"policy-decision.v1","event_id":"opaque-batch-wrapper","effect":"allow","reason":"allow: exit 0, no output"}

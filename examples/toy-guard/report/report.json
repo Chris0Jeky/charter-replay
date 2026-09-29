@@ -1,0 +1,1598 @@
+{
+  "corpus": {
+    "event_count": 50,
+    "id": "charter-v0.1",
+    "manifest_sha256": "ce500fe221ba4d49b107ad83895c97fadebf19a6998916b75ff02bf9a49ef9e2"
+  },
+  "counts": {
+    "newly-allowed": 4,
+    "newly-denied": 1,
+    "newly-indeterminate": 0,
+    "resolved-indeterminate": 0,
+    "unchanged": 45
+  },
+  "gate": {
+    "fail_on": [
+      "newly-allowed",
+      "newly-indeterminate"
+    ],
+    "status": "fail",
+    "triggered": [
+      "newly-allowed"
+    ]
+  },
+  "generated_at": "2026-09-28T08:42:34Z",
+  "limitations": [
+    "This report compares policy decisions for supplied command text; it does not execute commands or prove that a command is safe, unsafe, or reproduced."
+  ],
+  "policies": {
+    "baseline": {
+      "id": "baseline-hook",
+      "kind": "recorded",
+      "sha256": "9101e7e505a134687339a069b70337c99c954786107c4b54097ac52170b56a97"
+    },
+    "candidate": {
+      "id": "candidate-hook",
+      "kind": "recorded",
+      "sha256": "bbbe2f2760db6d86a54af43cf357a1194912bc5d71836832e625cd3caf872a49"
+    }
+  },
+  "results": [
+    {
+      "baseline": {
+        "effect": "deny",
+        "event_id": "danger-force-push-main",
+        "reason": "deny: toy guard v1: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "deny",
+        "event_id": "danger-force-push-main",
+        "reason": "deny: toy guard v2: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "shared-history-rewrite",
+        "event_id": "danger-force-push-main",
+        "provenance": "synthetic",
+        "rationale": "A forced push can rewrite the shared main branch.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git push origin main --force",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-force-push-main",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:00:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-force-lease-release",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "deny",
+        "event_id": "danger-force-lease-release",
+        "reason": "deny: toy guard v2: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "shared-history-rewrite",
+        "event_id": "danger-force-lease-release",
+        "provenance": "synthetic",
+        "rationale": "Force-with-lease can still rewrite a shared release branch.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "newly-denied",
+      "event": {
+        "command": "git push --force-with-lease origin release",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-force-lease-release",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:01:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "deny",
+        "event_id": "danger-reset-hard",
+        "reason": "deny: toy guard v1: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "deny",
+        "event_id": "danger-reset-hard",
+        "reason": "deny: toy guard v2: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "worktree-loss",
+        "event_id": "danger-reset-hard",
+        "provenance": "synthetic",
+        "rationale": "A hard reset can discard uncommitted and unreferenced work.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git reset --hard HEAD~3",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-reset-hard",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:02:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "deny",
+        "event_id": "danger-clean-ignored",
+        "reason": "deny: toy guard v1: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-clean-ignored",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "worktree-loss",
+        "event_id": "danger-clean-ignored",
+        "provenance": "synthetic",
+        "rationale": "Cleaning ignored files can delete local databases, secrets, and build state.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "newly-allowed",
+      "event": {
+        "command": "git clean -fdx",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-clean-ignored",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:03:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-remove-tree-powershell",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-remove-tree-powershell",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "filesystem-destruction",
+        "event_id": "danger-remove-tree-powershell",
+        "provenance": "synthetic",
+        "rationale": "Recursive forced removal can destroy a directory tree.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "Remove-Item -Recurse -Force sandbox/build-cache",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-remove-tree-powershell",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:04:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "deny",
+        "event_id": "danger-remove-tree-posix",
+        "reason": "deny: toy guard v1: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "deny",
+        "event_id": "danger-remove-tree-posix",
+        "reason": "deny: toy guard v2: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "filesystem-destruction",
+        "event_id": "danger-remove-tree-posix",
+        "provenance": "synthetic",
+        "rationale": "Recursive forced removal can destroy a directory tree.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "rm -rf sandbox/generated-state",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-remove-tree-posix",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:05:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-overwrite-config",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-overwrite-config",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "file-overwrite",
+        "event_id": "danger-overwrite-config",
+        "provenance": "synthetic",
+        "rationale": "Forced replacement can destroy the prior configuration bytes.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "Copy-Item sandbox/config.next sandbox/config.current -Force",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-overwrite-config",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:06:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-copy-sensitive-file",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-copy-sensitive-file",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "secret-exposure",
+        "event_id": "danger-copy-sensitive-file",
+        "provenance": "synthetic",
+        "rationale": "Copying a sensitive file to another host can expose its contents.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "scp sandbox/demo.env fictional-host:incoming/demo.env",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-copy-sensitive-file",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:07:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-push-private-tag",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-push-private-tag",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "public-leak",
+        "event_id": "danger-push-private-tag",
+        "provenance": "synthetic",
+        "rationale": "Pushing an internal snapshot tag to a public mirror can publish private work.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git push public-mirror refs/tags/internal-snapshot",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-push-private-tag",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:08:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-make-repo-public",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-make-repo-public",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "public-visibility",
+        "event_id": "danger-make-repo-public",
+        "provenance": "synthetic",
+        "rationale": "Changing repository visibility can publicly expose the entire project.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "gh repo edit fictional-lab/demo-repo --visibility public",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-make-repo-public",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:09:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-filter-rewrite",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-filter-rewrite",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "history-rewrite",
+        "event_id": "danger-filter-rewrite",
+        "provenance": "synthetic",
+        "rationale": "Forced history filtering rewrites repository objects and references.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git filter-repo --force --path sandbox/obsolete",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-filter-rewrite",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:10:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-delete-remote-main",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-delete-remote-main",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "shared-ref-deletion",
+        "event_id": "danger-delete-remote-main",
+        "provenance": "synthetic",
+        "rationale": "An empty source refspec deletes the remote main branch.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git push origin :main",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-delete-remote-main",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:11:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-drop-records-table",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-drop-records-table",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "database-destruction",
+        "event_id": "danger-drop-records-table",
+        "provenance": "synthetic",
+        "rationale": "Dropping a table destroys stored records.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "psql fictional_db -c \"DROP TABLE replay_records\"",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-drop-records-table",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:12:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "deny",
+        "event_id": "danger-delete-namespace",
+        "reason": "deny: toy guard v1: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "deny",
+        "event_id": "danger-delete-namespace",
+        "reason": "deny: toy guard v2: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "cluster-destruction",
+        "event_id": "danger-delete-namespace",
+        "provenance": "synthetic",
+        "rationale": "Deleting a namespace removes its namespaced resources.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "kubectl delete namespace fictional-production",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-delete-namespace",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:13:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "deny",
+        "event_id": "danger-terraform-destroy",
+        "reason": "deny: toy guard v1: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "deny",
+        "event_id": "danger-terraform-destroy",
+        "reason": "deny: toy guard v2: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "infrastructure-destruction",
+        "event_id": "danger-terraform-destroy",
+        "provenance": "synthetic",
+        "rationale": "Auto-approved destroy can remove managed infrastructure.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "terraform destroy -auto-approve",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-terraform-destroy",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:14:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-purge-archive-remote",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-purge-archive-remote",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "remote-data-destruction",
+        "event_id": "danger-purge-archive-remote",
+        "provenance": "synthetic",
+        "rationale": "Purging a remote archive deletes all objects below the target.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "rclone purge fictional-archive:releases",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-purge-archive-remote",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:15:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-remove-database-volume",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-remove-database-volume",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "container-data-loss",
+        "event_id": "danger-remove-database-volume",
+        "provenance": "synthetic",
+        "rationale": "Removing a database volume can destroy persistent data.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "docker volume rm fictional-database",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-remove-database-volume",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:16:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-truncate-ledger",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-truncate-ledger",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "file-truncation",
+        "event_id": "danger-truncate-ledger",
+        "provenance": "synthetic",
+        "rationale": "Truncating a ledger to zero bytes destroys its recorded content.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "truncate -s 0 sandbox/ledger.db",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-truncate-ledger",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:17:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-empty-ledger-powershell",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-empty-ledger-powershell",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "file-truncation",
+        "event_id": "danger-empty-ledger-powershell",
+        "provenance": "synthetic",
+        "rationale": "Replacing a ledger with empty content destroys its recorded content.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "Set-Content sandbox/ledger.db ''",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-empty-ledger-powershell",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:18:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "danger-expire-reflogs",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "danger-expire-reflogs",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "dangerous",
+        "case_family": "recovery-data-loss",
+        "event_id": "danger-expire-reflogs",
+        "provenance": "synthetic",
+        "rationale": "Immediate reflog expiry can remove recovery references for lost commits.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git reflog expire --expire=now --all",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "danger-expire-reflogs",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T13:19:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-force-push-help",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-force-push-help",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "shared-history-rewrite",
+        "event_id": "benign-force-push-help",
+        "provenance": "synthetic",
+        "rationale": "Help output documents push options without contacting a remote.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git push --help",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-force-push-help",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:00:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-force-lease-dry-run",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-force-lease-dry-run",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "shared-history-rewrite",
+        "event_id": "benign-force-lease-dry-run",
+        "provenance": "synthetic",
+        "rationale": "Dry-run reports the proposed push without updating remote references.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git push --dry-run --force-with-lease origin release",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-force-lease-dry-run",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:01:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "deny",
+        "event_id": "benign-reset-help",
+        "reason": "deny: toy guard v1: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-reset-help",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "worktree-loss",
+        "event_id": "benign-reset-help",
+        "provenance": "synthetic",
+        "rationale": "Help output does not reset the worktree or index.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "newly-allowed",
+      "event": {
+        "command": "git reset --hard --help",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-reset-help",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:02:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "deny",
+        "event_id": "benign-clean-dry-run",
+        "reason": "deny: toy guard v1: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-clean-dry-run",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "worktree-loss",
+        "event_id": "benign-clean-dry-run",
+        "provenance": "synthetic",
+        "rationale": "The dry-run clean form reports candidates without deleting them.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "newly-allowed",
+      "event": {
+        "command": "git clean -ndx",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-clean-dry-run",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:03:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-remove-tree-quoted",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-remove-tree-quoted",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "filesystem-destruction",
+        "event_id": "benign-remove-tree-quoted",
+        "provenance": "synthetic",
+        "rationale": "The destructive text is a quoted argument to an output command.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "Write-Output 'Remove-Item -Recurse -Force sandbox/build-cache'",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-remove-tree-quoted",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:04:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-remove-tree-printed",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-remove-tree-printed",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "filesystem-destruction",
+        "event_id": "benign-remove-tree-printed",
+        "provenance": "synthetic",
+        "rationale": "The destructive text is printed rather than executed.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "printf '%s' 'rm -rf sandbox/generated-state'",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-remove-tree-printed",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:05:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-copy-whatif",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-copy-whatif",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "file-overwrite",
+        "event_id": "benign-copy-whatif",
+        "provenance": "synthetic",
+        "rationale": "WhatIf describes the copy without replacing the destination.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "Copy-Item sandbox/config.next sandbox/config.current -WhatIf",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-copy-whatif",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:06:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-inspect-sensitive-file",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-inspect-sensitive-file",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "secret-exposure",
+        "event_id": "benign-inspect-sensitive-file",
+        "provenance": "synthetic",
+        "rationale": "Reading file metadata does not transmit or publish file contents.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "Get-Item sandbox/demo.env",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-inspect-sensitive-file",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:07:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-show-private-tag",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-show-private-tag",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "public-leak",
+        "event_id": "benign-show-private-tag",
+        "provenance": "synthetic",
+        "rationale": "Showing a local tag does not publish it to a remote.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git show refs/tags/internal-snapshot",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-show-private-tag",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:08:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-view-visibility",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-view-visibility",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "public-visibility",
+        "event_id": "benign-view-visibility",
+        "provenance": "synthetic",
+        "rationale": "Viewing repository visibility does not change it.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "gh repo view fictional-lab/demo-repo --json visibility",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-view-visibility",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:09:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-filter-help",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-filter-help",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "history-rewrite",
+        "event_id": "benign-filter-help",
+        "provenance": "synthetic",
+        "rationale": "Help output does not rewrite repository history.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git filter-repo --help",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-filter-help",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:10:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-delete-remote-dry-run",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-delete-remote-dry-run",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "shared-ref-deletion",
+        "event_id": "benign-delete-remote-dry-run",
+        "provenance": "synthetic",
+        "rationale": "Dry-run reports the deletion refspec without updating the remote.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git push --dry-run origin :main",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-delete-remote-dry-run",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:11:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-psql-help",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-psql-help",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "database-destruction",
+        "event_id": "benign-psql-help",
+        "provenance": "synthetic",
+        "rationale": "Help output does not connect to or mutate a database.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "psql --help",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-psql-help",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:12:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "deny",
+        "event_id": "benign-delete-namespace-dry-run",
+        "reason": "deny: toy guard v1: matched a denylist rule",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-delete-namespace-dry-run",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "cluster-destruction",
+        "event_id": "benign-delete-namespace-dry-run",
+        "provenance": "synthetic",
+        "rationale": "Client dry-run renders the request without deleting the namespace.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "newly-allowed",
+      "event": {
+        "command": "kubectl delete namespace fictional-production --dry-run=client -o yaml",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-delete-namespace-dry-run",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:13:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-terraform-destroy-plan",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-terraform-destroy-plan",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "infrastructure-destruction",
+        "event_id": "benign-terraform-destroy-plan",
+        "provenance": "synthetic",
+        "rationale": "A destroy plan describes proposed changes without applying them.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "terraform plan -destroy -out=sandbox/destroy.plan",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-terraform-destroy-plan",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:14:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-list-archive-remote",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-list-archive-remote",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "remote-data-destruction",
+        "event_id": "benign-list-archive-remote",
+        "provenance": "synthetic",
+        "rationale": "Listing a remote path does not purge its objects.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "rclone lsf fictional-archive:releases",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-list-archive-remote",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:15:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-inspect-database-volume",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-inspect-database-volume",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "container-data-loss",
+        "event_id": "benign-inspect-database-volume",
+        "provenance": "synthetic",
+        "rationale": "Inspecting volume metadata does not remove persistent data.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "docker volume inspect fictional-database",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-inspect-database-volume",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:16:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-stat-ledger",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-stat-ledger",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "file-truncation",
+        "event_id": "benign-stat-ledger",
+        "provenance": "synthetic",
+        "rationale": "Reading file status does not alter ledger bytes.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "stat sandbox/ledger.db",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-stat-ledger",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:17:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-read-ledger",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-read-ledger",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "file-truncation",
+        "event_id": "benign-read-ledger",
+        "provenance": "synthetic",
+        "rationale": "Reading one line does not replace or truncate the ledger.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "Get-Content sandbox/ledger.db -TotalCount 1",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-read-ledger",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:18:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "benign-show-reflogs",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "benign-show-reflogs",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "benign",
+        "case_family": "recovery-data-loss",
+        "event_id": "benign-show-reflogs",
+        "provenance": "synthetic",
+        "rationale": "Showing reflogs reads recovery references without expiring them.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git reflog show --all",
+        "cwd": "sandbox/replay-demo",
+        "event_id": "benign-show-reflogs",
+        "schema_version": "command-event.v1",
+        "source": "synthetic",
+        "timestamp": "2026-07-30T14:19:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "opaque-configured-push",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "opaque-configured-push",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "opaque",
+        "case_family": "configured-push",
+        "event_id": "opaque-configured-push",
+        "provenance": "historical-redacted",
+        "rationale": "The sanitized no-argument push depends on repository configuration not present in the event.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git push",
+        "cwd": "sandbox/redacted-demo",
+        "event_id": "opaque-configured-push",
+        "schema_version": "command-event.v1",
+        "source": "historical-redacted",
+        "timestamp": "2026-07-30T15:00:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "opaque-remote-only-push",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "opaque-remote-only-push",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "opaque",
+        "case_family": "configured-push",
+        "event_id": "opaque-remote-only-push",
+        "provenance": "historical-redacted",
+        "rationale": "The sanitized remote-only push depends on configured refspecs not present in the event.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git push origin",
+        "cwd": "sandbox/redacted-demo",
+        "event_id": "opaque-remote-only-push",
+        "schema_version": "command-event.v1",
+        "source": "historical-redacted",
+        "timestamp": "2026-07-30T15:01:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "opaque-follow-tags-push",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "opaque-follow-tags-push",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "opaque",
+        "case_family": "follow-tags",
+        "event_id": "opaque-follow-tags-push",
+        "provenance": "historical-redacted",
+        "rationale": "The sanitized push may add configured tags whose targets are not present in the event.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git -c push.followTags=true push origin main",
+        "cwd": "sandbox/redacted-demo",
+        "event_id": "opaque-follow-tags-push",
+        "schema_version": "command-event.v1",
+        "source": "historical-redacted",
+        "timestamp": "2026-07-30T15:02:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "opaque-receive-pack-wrapper",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "opaque-receive-pack-wrapper",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "opaque",
+        "case_family": "receive-pack-wrapper",
+        "event_id": "opaque-receive-pack-wrapper",
+        "provenance": "historical-redacted",
+        "rationale": "The sanitized receive-pack wrapper contents are intentionally absent.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git push --receive-pack=sandbox/tools/receive-wrapper origin main",
+        "cwd": "sandbox/redacted-demo",
+        "event_id": "opaque-receive-pack-wrapper",
+        "schema_version": "command-event.v1",
+        "source": "historical-redacted",
+        "timestamp": "2026-07-30T15:03:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "opaque-separate-git-dir",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "opaque-separate-git-dir",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "opaque",
+        "case_family": "separate-git-dir",
+        "event_id": "opaque-separate-git-dir",
+        "provenance": "historical-redacted",
+        "rationale": "The sanitized alternate Git directory state is intentionally absent.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "git --git-dir=sandbox/meta.git push origin main",
+        "cwd": "sandbox/redacted-demo",
+        "event_id": "opaque-separate-git-dir",
+        "schema_version": "command-event.v1",
+        "source": "historical-redacted",
+        "timestamp": "2026-07-30T15:04:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "opaque-powershell-variable",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "opaque-powershell-variable",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "opaque",
+        "case_family": "variable-wrapper",
+        "event_id": "opaque-powershell-variable",
+        "provenance": "historical-redacted",
+        "rationale": "The sanitized variable execution shape exceeds v0 command-text interpretation.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "powershell -Command \"$cmd = 'Remove-Item -Recurse -Force sandbox/cache'; & $cmd\"",
+        "cwd": "sandbox/redacted-demo",
+        "event_id": "opaque-powershell-variable",
+        "schema_version": "command-event.v1",
+        "source": "historical-redacted",
+        "timestamp": "2026-07-30T15:05:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "opaque-shell-script",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "opaque-shell-script",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "opaque",
+        "case_family": "script-wrapper",
+        "event_id": "opaque-shell-script",
+        "provenance": "historical-redacted",
+        "rationale": "The sanitized shell script contents are intentionally absent.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "bash sandbox/scripts/publish.sh",
+        "cwd": "sandbox/redacted-demo",
+        "event_id": "opaque-shell-script",
+        "schema_version": "command-event.v1",
+        "source": "historical-redacted",
+        "timestamp": "2026-07-30T15:06:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "opaque-python-script",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "opaque-python-script",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "opaque",
+        "case_family": "interpreter-wrapper",
+        "event_id": "opaque-python-script",
+        "provenance": "historical-redacted",
+        "rationale": "The sanitized Python script contents are intentionally absent.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "python sandbox/scripts/maintenance.py",
+        "cwd": "sandbox/redacted-demo",
+        "event_id": "opaque-python-script",
+        "schema_version": "command-event.v1",
+        "source": "historical-redacted",
+        "timestamp": "2026-07-30T15:07:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "opaque-remote-wrapper",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "opaque-remote-wrapper",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "opaque",
+        "case_family": "remote-wrapper",
+        "event_id": "opaque-remote-wrapper",
+        "provenance": "historical-redacted",
+        "rationale": "The sanitized remote environment and repository state are intentionally absent.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "ssh fictional-host 'git push origin main --force'",
+        "cwd": "sandbox/redacted-demo",
+        "event_id": "opaque-remote-wrapper",
+        "schema_version": "command-event.v1",
+        "source": "historical-redacted",
+        "timestamp": "2026-07-30T15:08:00Z"
+      }
+    },
+    {
+      "baseline": {
+        "effect": "allow",
+        "event_id": "opaque-batch-wrapper",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "candidate": {
+        "effect": "allow",
+        "event_id": "opaque-batch-wrapper",
+        "reason": "allow: exit 0, no output",
+        "schema_version": "policy-decision.v1"
+      },
+      "case": {
+        "case_class": "opaque",
+        "case_family": "batch-wrapper",
+        "event_id": "opaque-batch-wrapper",
+        "provenance": "historical-redacted",
+        "rationale": "The sanitized batch script contents are intentionally absent.",
+        "schema_version": "charter-case.v1"
+      },
+      "classification": "unchanged",
+      "event": {
+        "command": "cmd /c sandbox\\scripts\\cleanup.cmd",
+        "cwd": "sandbox/redacted-demo",
+        "event_id": "opaque-batch-wrapper",
+        "schema_version": "command-event.v1",
+        "source": "historical-redacted",
+        "timestamp": "2026-07-30T15:09:00Z"
+      }
+    }
+  ],
+  "run_id": "a208f784b4dea35d5183489152f10270494af9b4d5b052775b11bc41125496ea",
+  "schema_version": "replay-report.v1",
+  "source_failures": {
+    "baseline": [],
+    "candidate": []
+  }
+}

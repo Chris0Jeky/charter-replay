@@ -1,0 +1,2 @@
+{"schema_version":"policy-decision.v1","event_id":"git-force-main-001","effect":"deny","reason":"The recorded baseline denied this event."}
+{"schema_version":"policy-decision.v1","event_id":"git-status-001","effect":"allow","reason":"The recorded baseline allowed this event."}

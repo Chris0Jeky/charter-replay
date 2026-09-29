@@ -1,0 +1,15 @@
+{
+  "schema_version": "corpus-manifest.v1",
+  "corpus_id": "charter-v0.2",
+  "event_count": 494,
+  "files": [
+    {
+      "path": "events.jsonl",
+      "sha256": "c02f9b09a085b23ff96cf32cb16a05ac8d6e16f8d003538f1b8effa7d26fef32"
+    },
+    {
+      "path": "cases.jsonl",
+      "sha256": "1522cc96011d7ca5a4a7b984d82f90ef5de3d8a4d9ec73fa1a2eb573d0e97ece"
+    }
+  ]
+}

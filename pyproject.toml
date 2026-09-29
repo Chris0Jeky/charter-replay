@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "charter-replay"
+version = "0.1.0"
+description = "Measure a coding-agent command hook: replay a corpus through two versions and diff the decisions."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Cristian Tcaci" }]
+requires-python = ">=3.11"
+dependencies = []
+keywords = ["claude-code", "codex", "hooks", "policy", "replay", "guardrails"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Testing",
+]
+
+[project.optional-dependencies]
+dev = ["black==26.3.1", "ruff==0.15.13"]
+
+[project.urls]
+Source = "https://github.com/Chris0Jeky/charter-replay"
+Issues = "https://github.com/Chris0Jeky/charter-replay/issues"
+
+[project.scripts]
+charter-replay = "charter_replay.app:main"
+
+[tool.setuptools.packages.find]
+include = ["charter_replay*"]
+exclude = ["charter_replay.tests*"]
+
+[tool.setuptools.package-data]
+charter_replay = ["schemas/*.json", "corpora/*/*.jsonl", "corpora/*/*.json"]

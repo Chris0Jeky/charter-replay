@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "charter-case.v1.schema.json",
+  "title": "CharterCase v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "case_class",
+    "case_family",
+    "rationale",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {"const": "charter-case.v1"},
+    "event_id": {"type": "string", "minLength": 1},
+    "case_class": {"enum": ["dangerous", "benign", "opaque"]},
+    "case_family": {"type": "string", "minLength": 1},
+    "rationale": {"type": "string", "minLength": 1},
+    "provenance": {
+      "enum": ["synthetic", "historical-redacted", "generated-variant"]
+    }
+  }
+}
