@@ -30,6 +30,7 @@ from charter_replay.adapters import RUNTIMES, get_adapter
 from charter_replay.adapters.base import event_cwd as event_cwd
 from charter_replay.corpus import POLICY_DECISION_VERSION
 from charter_replay.digests import sha256_bytes
+from charter_replay.metrics import latency_summary
 from charter_replay.policy_sources import (
     SourceFailure,
     _cleanup_snapshot_root,
@@ -379,6 +380,19 @@ def record_hook(
     ]
     (output / "outcomes.jsonl").write_text(
         "\n".join(outcome_lines) + "\n", encoding="utf-8", newline="\n"
+    )
+    measurements = latency_summary(
+        [
+            {"outcome": outcome.outcome, "elapsed_ms": outcome.elapsed_ms}
+            for outcome in outcomes
+        ],
+        jobs=jobs,
+        timeout_seconds=spec.timeout,
+    )
+    (output / "measurements.json").write_text(
+        json.dumps(measurements, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
     )
     counts = {name: 0 for name in OUTCOMES}
     for outcome in outcomes:

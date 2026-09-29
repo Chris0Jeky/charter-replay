@@ -18,6 +18,7 @@ from charter_replay import cli as kernel
 from charter_replay.hooks import ASK_EFFECTS, RUNTIMES, HookSpec, HookSpecError
 from charter_replay.hooks import parse_hook_command, record_hook
 from charter_replay.policy_sources import SourceFailure
+from charter_replay.metrics import render_label_summary, score_labels
 
 PROG = "charter-replay"
 SUMMARY_JSON = "summary.json"
@@ -155,6 +156,7 @@ def breakdown(report: dict[str, Any]) -> dict[str, Any]:
         "counts": report["counts"],
         "gate": report["gate"],
         "source_failures": report["source_failures"],
+        "label_agreement": score_labels(report),
         "effects": effects,
         "by_case_class": dict(sorted(by_class.items())),
         "by_case_family": dict(sorted(by_family.items())),
@@ -202,6 +204,7 @@ def render_summary(summary: dict[str, Any], outcomes: dict[str, Any]) -> str:
                 if label != "unchanged"
             )
             lines.append(f"| {key} | {detail} |")
+    lines += ["", render_label_summary(summary["label_agreement"])]
     lines += [
         "",
         "Recorded hook decisions were compared; no corpus command was executed.",
@@ -298,6 +301,9 @@ def main(argv: list[str] | None = None) -> int:
     except (HookSpecError, kernel.ReplayInputError, ValueError) as exc:
         print(f"{PROG}: {exc}", file=sys.stderr)
         return kernel.EXIT_INPUT_INVALID
+    except OSError as exc:
+        print(f"{PROG}: output failed ({exc.__class__.__name__})", file=sys.stderr)
+        return kernel.EXIT_SOURCE_FAILED
 
 
 if __name__ == "__main__":
