@@ -14,7 +14,9 @@ from charter_replay import hooks
 from charter_replay.policy_sources import SourceFailure
 from charter_replay.tests.unit.test_hook_adapter import _event
 
-FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "hooks" / "workspace_hook.py"
+FIXTURE = (
+    Path(__file__).resolve().parents[1] / "fixtures" / "hooks" / "workspace_hook.py"
+)
 
 
 class WorkspaceTests(unittest.TestCase):
@@ -108,7 +110,9 @@ class WorkspaceTests(unittest.TestCase):
         ):
             summary, records = self.record([_event("cleanup", "allow")])
         self.assertEqual(records[0]["effect"], "allow")
-        self.assertEqual(summary["failures"][0]["code"], "hook-workspace-cleanup-failed")
+        self.assertEqual(
+            summary["failures"][0]["code"], "hook-workspace-cleanup-failed"
+        )
         self.assertEqual(summary["failures"][0]["event_id"], "cleanup")
 
     def test_outside_payload_cwd_is_rejected_before_process_start(self):
@@ -119,7 +123,9 @@ class WorkspaceTests(unittest.TestCase):
         )
         payload["cwd"] = str(self.root)
         with mock.patch.object(
-            hooks, "_run_policy_process", side_effect=AssertionError("outside cwd invoked")
+            hooks,
+            "_run_policy_process",
+            side_effect=AssertionError("outside cwd invoked"),
         ) as launch:
             with self.assertRaises(hooks.HookSpecError):
                 hooks.run_hook(self.spec, payload, workspace=workspace)
