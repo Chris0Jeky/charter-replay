@@ -40,6 +40,7 @@ from charter_replay.policy_sources import (
     ProcessDecisionSource,
     RecordedDecisionSource,
     SNAPSHOT_MTIME_NS,
+    SourceFailure,
     validate_recorded_manifest,
 )
 from charter_replay.reports import (
@@ -537,8 +538,25 @@ def _validated_output_path(
     return Path(raw_path)
 
 
-def _run_replay(args: argparse.Namespace) -> int:
-    corpus = _load_charter_corpus(args.corpus)
+def _run_replay(
+    args: argparse.Namespace,
+    *,
+    captured_corpus: LoadedCharterCorpus | None = None,
+    baseline_failures: tuple[SourceFailure, ...] = (),
+    candidate_failures: tuple[SourceFailure, ...] = (),
+) -> int:
+    """Compare validated sources, retaining failures observed by an invoking caller.
+
+    Supplementary failures never bypass recorded-source validation. They let
+    the hook recorder use the same report transaction and gate as the kernel.
+    Its already-validated corpus capture also prevents a second disk read from
+    binding decisions to bytes the hooks never saw.
+    """
+    corpus = (
+        captured_corpus
+        if captured_corpus is not None
+        else _load_charter_corpus(args.corpus)
+    )
     baseline = _load_policy_source(args.baseline, args.timeout)
     candidate = _load_policy_source(args.candidate, args.timeout)
     output = _validated_output_path(args.output, (baseline, candidate))
@@ -578,11 +596,13 @@ def _run_replay(args: argparse.Namespace) -> int:
         list(candidate_result.decisions),
         case_values=corpus.cases,
     )
+    baseline_failures = baseline_result.failures + baseline_failures
+    candidate_failures = candidate_result.failures + candidate_failures
     report = build_json_report(
         comparison,
         run_manifest,
-        baseline_failures=baseline_result.failures,
-        candidate_failures=candidate_result.failures,
+        baseline_failures=baseline_failures,
+        candidate_failures=candidate_failures,
     )
     reproduction_argv = _reproduction_argv(args)
     reproduction_shell = "powershell" if os.name == "nt" else "posix-sh"
@@ -602,7 +622,7 @@ def _run_replay(args: argparse.Namespace) -> int:
         print(f"replay output failed: {exc}", file=sys.stderr)
         return EXIT_SOURCE_FAILED
 
-    if baseline_result.failures or candidate_result.failures:
+    if baseline_failures or candidate_failures:
         return EXIT_SOURCE_FAILED
     if report["gate"]["triggered"]:
         return EXIT_REGRESSION
