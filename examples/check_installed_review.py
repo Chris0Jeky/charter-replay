@@ -87,13 +87,9 @@ def run_check(output: Path) -> dict:
         [
             "hooks",
             "--baseline",
-            json.dumps(
-                [sys.executable, str(ROOT / "examples/toy-guard/guard_v1.py")]
-            ),
+            json.dumps([sys.executable, str(ROOT / "examples/toy-guard/guard_v1.py")]),
             "--candidate",
-            json.dumps(
-                [sys.executable, str(ROOT / "examples/toy-guard/guard_v2.py")]
-            ),
+            json.dumps([sys.executable, str(ROOT / "examples/toy-guard/guard_v2.py")]),
             "--corpus",
             str(pack),
             "--output",

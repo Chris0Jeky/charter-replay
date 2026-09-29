@@ -37,7 +37,7 @@ class InstalledReviewCheckTests(unittest.TestCase):
         )
 
     def test_installed_package_and_corpus_are_required_inside_environment(self):
-        self.assertEqual(self.source(), self.corpus)
+        self.assertEqual(self.source(), self.corpus.resolve())
 
     def test_checkout_package_is_not_accepted_as_installed_evidence(self):
         shadow = self.repository / "charter_replay" / "__init__.py"
