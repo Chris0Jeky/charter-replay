@@ -60,7 +60,9 @@ class StackIntegrationTests(unittest.TestCase):
             base_directory=self.source,
             files=["events.jsonl", "cases.jsonl"],
         )
-        (self.source / "corpus-manifest.json").write_bytes(manifest_json_bytes(manifest))
+        (self.source / "corpus-manifest.json").write_bytes(
+            manifest_json_bytes(manifest)
+        )
         self.pack = self.root / "pack"
         with redirect_stdout(io.StringIO()):
             self.assertEqual(

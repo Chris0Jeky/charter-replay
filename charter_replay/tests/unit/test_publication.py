@@ -20,12 +20,21 @@ class PublicationTests(unittest.TestCase):
         self.module.publish_new_directory(self.output, self.files, marker="commit.json")
 
     def test_windows_reserved_and_aliasing_names_are_rejected_on_every_platform(self):
-        for name in ("con", "con.json", "nul.txt", "aux", "com1.json", "lpt9.txt", "data."):
+        for name in (
+            "con",
+            "con.json",
+            "nul.txt",
+            "aux",
+            "com1.json",
+            "lpt9.txt",
+            "data.",
+        ):
             self.files = {name: b"payload", "commit.json": b"manifest"}
             with self.subTest(name=name), self.assertRaises(ValueError):
                 self.publish()
             if self.output.exists():
                 import shutil
+
                 shutil.rmtree(self.output)
 
     def test_bad_paths_types_missing_marker_and_budget_fail_before_output(self):
@@ -48,11 +57,13 @@ class PublicationTests(unittest.TestCase):
 
     def test_destination_racing_with_staging_is_preserved(self):
         original = self.module.os.open
+
         def reserve(*args, **kwargs):
             if not self.output.exists():
                 self.output.mkdir()
                 (self.output / "other").write_bytes(b"keep")
             return original(*args, **kwargs)
+
         with mock.patch.object(self.module.os, "open", side_effect=reserve):
             with self.assertRaises(ValueError):
                 self.publish()
@@ -73,7 +84,9 @@ class PublicationTests(unittest.TestCase):
         self.assertTrue(self.output.is_symlink())
 
     def test_first_link_failure_removes_only_our_empty_reservation(self):
-        with mock.patch.object(self.module.os, "link", side_effect=OSError("no hard links")):
+        with mock.patch.object(
+            self.module.os, "link", side_effect=OSError("no hard links")
+        ):
             with self.assertRaises(OSError):
                 self.publish()
         self.assertFalse(self.output.exists())
@@ -81,15 +94,19 @@ class PublicationTests(unittest.TestCase):
 
     def test_changed_owned_inode_is_preserved_instead_of_deleted(self):
         original = self.module.os.link
+
         def modify_then_fail(source, target):
             if Path(target).name == "commit.json":
                 (self.output / "data.json").write_bytes(b"other writer's changes")
                 raise OSError("injected failure")
             return original(source, target)
+
         with mock.patch.object(self.module.os, "link", side_effect=modify_then_fail):
             with self.assertRaises(OSError):
                 self.publish()
-        self.assertEqual((self.output / "data.json").read_bytes(), b"other writer's changes")
+        self.assertEqual(
+            (self.output / "data.json").read_bytes(), b"other writer's changes"
+        )
         self.assertFalse((self.output / "commit.json").exists())
 
     def test_rollback_bounds_reads_even_after_an_owned_file_is_enlarged(self):
@@ -103,7 +120,9 @@ class PublicationTests(unittest.TestCase):
 
         with (
             mock.patch.object(self.module.os, "link", side_effect=modify_then_fail),
-            mock.patch.object(Path, "read_bytes", side_effect=AssertionError("unbounded read")),
+            mock.patch.object(
+                Path, "read_bytes", side_effect=AssertionError("unbounded read")
+            ),
         ):
             with self.assertRaises(OSError):
                 self.publish()
@@ -112,13 +131,17 @@ class PublicationTests(unittest.TestCase):
     def test_completion_marker_is_last_and_bytes_are_unchanged(self):
         original = self.module.os.link
         order = []
+
         def observe(source, target):
             order.append(Path(target).name)
             return original(source, target)
+
         with mock.patch.object(self.module.os, "link", side_effect=observe):
             self.publish()
         self.assertEqual(order[-1], "commit.json")
-        self.assertEqual({p.name: p.read_bytes() for p in self.output.iterdir()}, self.files)
+        self.assertEqual(
+            {p.name: p.read_bytes() for p in self.output.iterdir()}, self.files
+        )
 
 
 if __name__ == "__main__":

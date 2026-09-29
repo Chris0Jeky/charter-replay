@@ -18,11 +18,17 @@ NOTICE = (
 
 
 def _table(caption, headings, rows) -> str:
-    parts = ['<div class="table-wrap"><table>', f"<caption>{_html(caption)}</caption>",
-             "<thead><tr>" + "".join(f'<th scope="col">{_html(value)}</th>' for value in headings),
-             "</tr></thead><tbody>"]
+    parts = [
+        '<div class="table-wrap"><table>',
+        f"<caption>{_html(caption)}</caption>",
+        "<thead><tr>"
+        + "".join(f'<th scope="col">{_html(value)}</th>' for value in headings),
+        "</tr></thead><tbody>",
+    ]
     for row in rows:
-        parts.append("<tr>" + "".join(f"<td>{_html(value)}</td>" for value in row) + "</tr>")
+        parts.append(
+            "<tr>" + "".join(f"<td>{_html(value)}</td>" for value in row) + "</tr>"
+        )
     parts.append("</tbody></table></div>")
     return "\n".join(parts)
 
@@ -48,25 +54,53 @@ def _coverage_section(coverage: dict[str, Any], details: dict[str, Any]) -> str:
         "Shared shape disagreements are identical, nontrivial seed-to-shape "
         "transitions in both versions, even though their cross-version diff is "
         "unchanged. These observations do not add a safety gate.</p>",
-        _table("Cross-version changes by verified origin", ("Diff class", "Seed", "Derived"), [
-            (name, coverage["by_origin"]["seed"][name], coverage["by_origin"]["derived"][name])
-            for name in DIFF_CLASSES
-        ]),
-        _table("Transform coverage", ("Transform", "Generated", "Skipped", "Changed"), [
-            (name, row["generated"], row["skipped"], row["generated"] - row["changes"]["unchanged"])
-            for name, row in coverage["by_transform"].items()
-        ]),
+        _table(
+            "Cross-version changes by verified origin",
+            ("Diff class", "Seed", "Derived"),
+            [
+                (
+                    name,
+                    coverage["by_origin"]["seed"][name],
+                    coverage["by_origin"]["derived"][name],
+                )
+                for name in DIFF_CLASSES
+            ],
+        ),
+        _table(
+            "Transform coverage",
+            ("Transform", "Generated", "Skipped", "Changed"),
+            [
+                (
+                    name,
+                    row["generated"],
+                    row["skipped"],
+                    row["generated"] - row["changes"]["unchanged"],
+                )
+                for name, row in coverage["by_transform"].items()
+            ],
+        ),
         '<details class="panel"><summary>Seed to shape effects</summary>',
         "<p>Each cell counts a seed-effect to variant-effect transition within "
         "one policy, not a baseline-to-candidate transition. Indeterminate is "
         "separate from allow and deny. Multiple shapes can share a seed.</p>",
     ]
     for name, row in coverage["by_transform"].items():
-        parts.append(_table(name, ("Seed effect", "Shape effect", "Baseline", "Candidate"), [
-            (before, after, row["shape_effects"]["baseline"][f"{before}->{after}"],
-             row["shape_effects"]["candidate"][f"{before}->{after}"])
-            for before in sorted(DECISION_EFFECTS) for after in sorted(DECISION_EFFECTS)
-        ]))
+        parts.append(
+            _table(
+                name,
+                ("Seed effect", "Shape effect", "Baseline", "Candidate"),
+                [
+                    (
+                        before,
+                        after,
+                        row["shape_effects"]["baseline"][f"{before}->{after}"],
+                        row["shape_effects"]["candidate"][f"{before}->{after}"],
+                    )
+                    for before in sorted(DECISION_EFFECTS)
+                    for after in sorted(DECISION_EFFECTS)
+                ],
+            )
+        )
     parts.append("</details></section>")
     return "\n".join(parts)
 
@@ -89,13 +123,22 @@ def _coverage_text(coverage: dict[str, Any], details: dict[str, Any]) -> str:
         "|---|---:|---:|---:|---:|---:|",
     ]
     for origin, row in coverage["by_origin"].items():
-        lines.append(f'| {origin} | {row["newly-allowed"]} | {row["newly-denied"]} | '
-                     f'{row["newly-indeterminate"]} | {row["resolved-indeterminate"]} | {row["unchanged"]} |')
+        lines.append(
+            f'| {origin} | {row["newly-allowed"]} | {row["newly-denied"]} | '
+            f'{row["newly-indeterminate"]} | {row["resolved-indeterminate"]} | {row["unchanged"]} |'
+        )
     lines += ["\n| Transform | Generated | Skipped | Changed |", "|---|---:|---:|---:|"]
     for name, row in coverage["by_transform"].items():
         changed = row["generated"] - row["changes"]["unchanged"]
         lines.append(f'| {name} | {row["generated"]} | {row["skipped"]} | {changed} |')
-    lines.extend(["", "Full effect matrices are in report.html from this review bundle.", NOTICE, ""])
+    lines.extend(
+        [
+            "",
+            "Full effect matrices are in report.html from this review bundle.",
+            NOTICE,
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -106,14 +149,22 @@ def render_review_views(
     marker = "<h2>Supplied-label agreement</h2>"
     markup = render_html(report)
     if markup.count(marker) != 1:
-        raise ValueError("review template does not have its unique coverage insertion point")
+        raise ValueError(
+            "review template does not have its unique coverage insertion point"
+        )
     markup = markup.replace(marker, _coverage_section(coverage, details) + marker, 1)
     section = _coverage_text(coverage, details)
     result = {"report.html": markup.encode("utf-8")}
-    for aggregate, name in ((False, "pr-comment.md"), (True, "pr-comment-aggregate.md")):
+    for aggregate, name in (
+        (False, "pr-comment.md"),
+        (True, "pr-comment-aggregate.md"),
+    ):
         # Reserve space for coverage rather than truncating a UTF-8/Markdown row.
         for limit in range(20, -1, -1):
-            text = render_pr_comment(report, aggregate_only=aggregate, limit=limit) + section
+            text = (
+                render_pr_comment(report, aggregate_only=aggregate, limit=limit)
+                + section
+            )
             data = text.encode("utf-8")
             if len(data) <= COMMENT_LIMIT_BYTES:
                 result[name] = data

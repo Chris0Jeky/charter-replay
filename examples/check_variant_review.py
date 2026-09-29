@@ -8,7 +8,9 @@ import json
 from pathlib import Path
 
 
-def check_review(html_path: Path, evidence: Path, executable: str | None = None) -> dict:
+def check_review(
+    html_path: Path, evidence: Path, executable: str | None = None
+) -> dict:
     if not __debug__:
         raise RuntimeError("browser checks require assertions enabled")
     from playwright.sync_api import sync_playwright
@@ -44,7 +46,9 @@ def check_review(html_path: Path, evidence: Path, executable: str | None = None)
                 matrices.locator("summary").click()
                 if javascript:
                     assert page.locator("#filters").is_visible()
-                    derived = page.locator('[data-case][data-origin="generated-variant"]').count()
+                    derived = page.locator(
+                        '[data-case][data-origin="generated-variant"]'
+                    ).count()
                     page.locator("#filter-origin").select_option("generated-variant")
                     assert page.locator("[data-case]:visible").count() == derived
                     page.locator("#search").fill("__no_matching_charter_case__")
@@ -52,7 +56,9 @@ def check_review(html_path: Path, evidence: Path, executable: str | None = None)
                     page.locator("#reset").focus()
                     page.keyboard.press("Enter")
                     assert page.locator("[data-case]:visible").count() == total
-                    assert not page.evaluate("Boolean(window.injected || window.__injected)")
+                    assert not page.evaluate(
+                        "Boolean(window.injected || window.__injected)"
+                    )
                 else:
                     assert not page.locator("#filters").is_visible()
                     assert page.locator("[data-case]:visible").count() == total
@@ -61,11 +67,17 @@ def check_review(html_path: Path, evidence: Path, executable: str | None = None)
                 assert not requests, requests
                 assert not errors, errors
                 page.screenshot(path=str(evidence / f"{label}.png"), full_page=True)
-                observations.append({
-                    "view": label, "width": width, "javascript": javascript,
-                    "cases": total, "requests": len(requests), "script_errors": len(errors),
-                    "body_overflow": False,
-                })
+                observations.append(
+                    {
+                        "view": label,
+                        "width": width,
+                        "javascript": javascript,
+                        "cases": total,
+                        "requests": len(requests),
+                        "script_errors": len(errors),
+                        "body_overflow": False,
+                    }
+                )
                 context.close()
             result = {
                 "schema_version": "variant-browser-check.v1",
@@ -89,10 +101,16 @@ def check_review(html_path: Path, evidence: Path, executable: str | None = None)
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("html", type=Path)
-    parser.add_argument("--evidence", type=Path, required=True, help="new evidence directory")
+    parser.add_argument(
+        "--evidence", type=Path, required=True, help="new evidence directory"
+    )
     parser.add_argument("--executable", help="optional installed Chromium executable")
     args = parser.parse_args()
-    print(json.dumps(check_review(args.html, args.evidence, args.executable), sort_keys=True))
+    print(
+        json.dumps(
+            check_review(args.html, args.evidence, args.executable), sort_keys=True
+        )
+    )
     return 0
 
 

@@ -42,7 +42,9 @@ def main(argv: list[str] | None = None) -> int:
         review.add_argument("--pack", required=True)
         review.add_argument("--report", required=True)
         review.add_argument("--run-manifest", required=True)
-        review.add_argument("--output" if name == "review" else "--review", required=True)
+        review.add_argument(
+            "--output" if name == "review" else "--review", required=True
+        )
     args = parser.parse_args(argv)
     if args.command in ("review", "verify-review"):
         from charter_replay.variant_review import publish_review, verify_review
@@ -51,15 +53,27 @@ def main(argv: list[str] | None = None) -> int:
         operation = publish_review if publishing else verify_review
         target = args.output if publishing else args.review
         try:
-            code = operation(args.source, args.pack, args.report, args.run_manifest, target)
+            code = operation(
+                args.source, args.pack, args.report, args.run_manifest, target
+            )
         except (ValueError, RuntimeError):
-            print("charter-replay variants: invalid review inputs or destination", file=sys.stderr)
+            print(
+                "charter-replay variants: invalid review inputs or destination",
+                file=sys.stderr,
+            )
             return 2
         except OSError:
             print("charter-replay variants: review publication failed", file=sys.stderr)
             return 3
-        print(json.dumps({"gate": {0: "pass", 1: "fail", 3: "error"}[code],
-                          "status": "review-published" if publishing else "review-verified"}, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "gate": {0: "pass", 1: "fail", 3: "error"}[code],
+                    "status": "review-published" if publishing else "review-verified",
+                },
+                sort_keys=True,
+            )
+        )
         return code
     try:
         if args.command == "coverage":

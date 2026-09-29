@@ -9,7 +9,9 @@ import tempfile
 
 MAX_PUBLICATION_BYTES = 128 * 1024 * 1024
 _RESERVED_STEMS = {"con", "prn", "aux", "nul", "conin$", "conout$"}
-_RESERVED_STEMS.update(f"{prefix}{number}" for prefix in ("com", "lpt") for number in range(1, 10))
+_RESERVED_STEMS.update(
+    f"{prefix}{number}" for prefix in ("com", "lpt") for number in range(1, 10)
+)
 
 
 def new_destination(output: str | Path) -> Path:
@@ -51,7 +53,9 @@ def publish_new_directory(
         raise ValueError("publication exceeds the byte budget")
     target = new_destination(output)
     names = sorted(set(files) - {marker}) + [marker]
-    with tempfile.TemporaryDirectory(prefix=".charter-publish-", dir=target.parent) as raw:
+    with tempfile.TemporaryDirectory(
+        prefix=".charter-publish-", dir=target.parent
+    ) as raw:
         staging = Path(raw)
         for name in names:
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
@@ -61,7 +65,9 @@ def publish_new_directory(
         try:
             target.mkdir(mode=0o700)
         except FileExistsError as exc:
-            raise ValueError("output appeared during publication; nothing is overwritten") from exc
+            raise ValueError(
+                "output appeared during publication; nothing is overwritten"
+            ) from exc
         owned = []
         try:
             for name in names:

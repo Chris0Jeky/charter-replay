@@ -42,26 +42,39 @@ class VariantReviewTests(unittest.TestCase):
             (("rm sandbox/fictional", "dangerous"), ("git status", "benign"))
         ):
             event_id = f"private-id-{number}"
-            events.append(dict(
-                schema_version="command-event.v1", event_id=event_id,
-                timestamp="2026-01-01T00:00:00Z", source="synthetic",
-                command=command, cwd="sandbox/project",
-            ))
-            cases.append(dict(
-                schema_version="charter-case.v1", event_id=event_id,
-                case_class=label, case_family="private-family-marker",
-                rationale="Synthetic evidence, not an execution claim.",
-                provenance="synthetic",
-            ))
+            events.append(
+                dict(
+                    schema_version="command-event.v1",
+                    event_id=event_id,
+                    timestamp="2026-01-01T00:00:00Z",
+                    source="synthetic",
+                    command=command,
+                    cwd="sandbox/project",
+                )
+            )
+            cases.append(
+                dict(
+                    schema_version="charter-case.v1",
+                    event_id=event_id,
+                    case_class=label,
+                    case_family="private-family-marker",
+                    rationale="Synthetic evidence, not an execution claim.",
+                    provenance="synthetic",
+                )
+            )
         for name, rows in (("events.jsonl", events), ("cases.jsonl", cases)):
             (self.source / name).write_bytes(
                 b"".join((json.dumps(row) + "\n").encode() for row in rows)
             )
         manifest = build_corpus_manifest(
-            corpus_id="private-source", event_count=2,
-            base_directory=self.source, files=["events.jsonl", "cases.jsonl"],
+            corpus_id="private-source",
+            event_count=2,
+            base_directory=self.source,
+            files=["events.jsonl", "cases.jsonl"],
         )
-        (self.source / "corpus-manifest.json").write_bytes(manifest_json_bytes(manifest))
+        (self.source / "corpus-manifest.json").write_bytes(
+            manifest_json_bytes(manifest)
+        )
         self.pack = self.root / "pack"
         self.lineage = generate_pack(self.source, self.pack, domain="posix-external.v1")
         self.loaded = cli._load_charter_corpus(str(self.pack))
@@ -73,19 +86,29 @@ class VariantReviewTests(unittest.TestCase):
                     effect = "allow"
                 if side == "candidate" and event["command"].startswith("env "):
                     effect = "allow" if effect == "deny" else "deny"
-                records.append(dict(
-                    schema_version="policy-decision.v1", event_id=event["event_id"],
-                    effect=effect, reason="private-reason-marker",
-                ))
+                records.append(
+                    dict(
+                        schema_version="policy-decision.v1",
+                        event_id=event["event_id"],
+                        effect=effect,
+                        reason="private-reason-marker",
+                    )
+                )
         self.compared = compare_decisions(
-            self.loaded.events, baseline, candidate, case_values=self.loaded.cases,
+            self.loaded.events,
+            baseline,
+            candidate,
+            case_values=self.loaded.cases,
         )
         self.manifest = build_run_manifest(
             generated_at="2026-01-01T00:00:00Z",
             baseline=dict(kind="recorded", id="private-base", sha256="a" * 64),
             candidate=dict(kind="recorded", id="private-next", sha256="b" * 64),
-            corpus=dict(id=self.loaded.corpus_id, event_count=self.loaded.event_count,
-                        manifest_sha256=self.loaded.manifest_sha256),
+            corpus=dict(
+                id=self.loaded.corpus_id,
+                event_count=self.loaded.event_count,
+                manifest_sha256=self.loaded.manifest_sha256,
+            ),
             fail_on=["newly-allowed", "newly-indeterminate"],
         )
         self.report = build_json_report(self.compared, self.manifest)
@@ -99,18 +122,27 @@ class VariantReviewTests(unittest.TestCase):
         self.manifest_path.write_bytes(manifest_json_bytes(self.manifest))
 
     def module(self):
-        self.assertIsNotNone(importlib.util.find_spec("charter_replay.variant_review"),
-                             "capture-bound variant review is missing")
+        self.assertIsNotNone(
+            importlib.util.find_spec("charter_replay.variant_review"),
+            "capture-bound variant review is missing",
+        )
         return importlib.import_module("charter_replay.variant_review")
 
     def build(self):
         return self.module().build_review(
-            self.source, self.pack, self.report_path, self.manifest_path,
+            self.source,
+            self.pack,
+            self.report_path,
+            self.manifest_path,
         )
 
     def publish(self):
         return self.module().publish_review(
-            self.source, self.pack, self.report_path, self.manifest_path, self.output,
+            self.source,
+            self.pack,
+            self.report_path,
+            self.manifest_path,
+            self.output,
         )
 
     def test_swapped_report_corpus_is_rejected_without_output(self):
@@ -121,7 +153,10 @@ class VariantReviewTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def test_detached_coverage_counts_are_not_an_admission_shortcut(self):
-        self.report["variant_coverage"] = {"status": "verified-projection", "counts": {}}
+        self.report["variant_coverage"] = {
+            "status": "verified-projection",
+            "counts": {},
+        }
         self.save()
         with self.assertRaises(ValueError):
             self.build()
@@ -138,8 +173,13 @@ class VariantReviewTests(unittest.TestCase):
             ("gate", dict(status="pass", fail_on=[], triggered=[])),
             ("run_id", "f" * 64),
             ("generated_at", "2025-01-01T00:00:00Z"),
-            ("policies", dict(baseline=self.report["policies"]["candidate"],
-                              candidate=self.report["policies"]["baseline"])),
+            (
+                "policies",
+                dict(
+                    baseline=self.report["policies"]["candidate"],
+                    candidate=self.report["policies"]["baseline"],
+                ),
+            ),
             ("limitations", ["unearned safety claim"]),
         )
         for key, value in mutations:
@@ -150,8 +190,11 @@ class VariantReviewTests(unittest.TestCase):
 
     def test_forged_run_manifest_and_unbound_extra_fields_are_rejected(self):
         original = deepcopy(self.manifest)
-        for key, value in (("run_id", "f" * 64), ("runner_version", "other-runner"),
-                           ("extra", "unexpected")):
+        for key, value in (
+            ("run_id", "f" * 64),
+            ("runner_version", "other-runner"),
+            ("extra", "unexpected"),
+        ):
             self.manifest = dict(original, **{key: value})
             self.save()
             with self.subTest(key=key), self.assertRaises(ValueError):
@@ -162,9 +205,12 @@ class VariantReviewTests(unittest.TestCase):
         self.assertEqual(code, 1)
         details = json.loads(files["variant-review.json"])
         coverage = json.loads(files["variant-coverage.json"])
-        self.assertEqual(coverage["clusters"]["unchanged_seeds_with_changed_variants"], 2)
-        self.assertEqual(details["shape_disagreements"]["shared"],
-                         {"variants": 1, "seeds": 1})
+        self.assertEqual(
+            coverage["clusters"]["unchanged_seeds_with_changed_variants"], 2
+        )
+        self.assertEqual(
+            details["shape_disagreements"]["shared"], {"variants": 1, "seeds": 1}
+        )
         markup = files["report.html"].decode()
         self.assertIn("Unchanged seeds with changed variants", markup)
         self.assertIn("Shared shape disagreements", markup)
@@ -173,7 +219,8 @@ class VariantReviewTests(unittest.TestCase):
 
     def test_source_failure_keeps_error_gate_and_exit_three(self):
         self.report = build_json_report(
-            self.compared, self.manifest,
+            self.compared,
+            self.manifest,
             candidate_failures=(SourceFailure("hook-crash", "Synthetic failure."),),
         )
         self.save()
@@ -188,9 +235,13 @@ class VariantReviewTests(unittest.TestCase):
 
     def test_malformed_or_wrong_event_failure_cannot_assert_source_health(self):
         original = deepcopy(self.report)
-        for failure in (None, {}, {"code": 1, "message": "bad"},
-                        {"code": "hook-crash", "message": "bad", "event_id": "wrong"},
-                        {"code": "hook-crash", "message": "bad", "extra": "x"}):
+        for failure in (
+            None,
+            {},
+            {"code": 1, "message": "bad"},
+            {"code": "hook-crash", "message": "bad", "event_id": "wrong"},
+            {"code": "hook-crash", "message": "bad", "extra": "x"},
+        ):
             self.report = deepcopy(original)
             self.report["source_failures"]["baseline"] = [failure]
             self.report["gate"]["status"] = "error"
@@ -201,8 +252,14 @@ class VariantReviewTests(unittest.TestCase):
     def test_aggregate_comment_omits_private_text_and_all_identities(self):
         files, _ = self.build()
         text = files["pr-comment-aggregate.md"].decode()
-        for secret in ("private-", "rm sandbox", "git status", str(self.root),
-                       self.manifest["run_id"], self.loaded.manifest_sha256):
+        for secret in (
+            "private-",
+            "rm sandbox",
+            "git status",
+            str(self.root),
+            self.manifest["run_id"],
+            self.loaded.manifest_sha256,
+        ):
             self.assertNotIn(secret, text)
         self.assertIn("not authenticated", text)
         self.assertIn("small counts", text)
@@ -231,7 +288,9 @@ class VariantReviewTests(unittest.TestCase):
         with mock.patch("subprocess.Popen", side_effect=AssertionError("launch")):
             first = self.build()
             self.assertEqual(first, self.build())
-        self.assertEqual(before, (self.report_path.read_bytes(), self.manifest_path.read_bytes()))
+        self.assertEqual(
+            before, (self.report_path.read_bytes(), self.manifest_path.read_bytes())
+        )
         self.assertNotIn(str(self.root).encode(), b"".join(first[0].values()))
 
     def test_reordered_rows_render_canonical_views_but_bind_distinct_input_bytes(self):
@@ -239,14 +298,27 @@ class VariantReviewTests(unittest.TestCase):
         self.report["results"].reverse()
         self.save()
         second, _ = self.build()
-        for name in ("report.html", "report.json", "pr-comment.md", "variant-coverage.json"):
+        for name in (
+            "report.html",
+            "report.json",
+            "pr-comment.md",
+            "variant-coverage.json",
+        ):
             self.assertEqual(first[name], second[name], name)
-        self.assertNotEqual(first["review-manifest.json"], second["review-manifest.json"])
+        self.assertNotEqual(
+            first["review-manifest.json"], second["review-manifest.json"]
+        )
 
     def test_malformed_nonfinite_duplicate_and_deep_json_are_rejected(self):
         self.module()
-        for raw in (b"{", b"[" * 2000, b"NaN", b'{"x":1,"x":2}',
-                    b'{"unused":1e999}', b'"\\ud800"'):
+        for raw in (
+            b"{",
+            b"[" * 2000,
+            b"NaN",
+            b'{"x":1,"x":2}',
+            b'{"unused":1e999}',
+            b'"\\ud800"',
+        ):
             self.report_path.write_bytes(raw)
             with self.subTest(raw=raw[:20]), self.assertRaises(ValueError):
                 self.build()
@@ -261,11 +333,13 @@ class VariantReviewTests(unittest.TestCase):
         module = self.module()
         first, _ = self.build()
         original_read = module._read_regular
+
         def replace_after_read(path, limit):
             data = original_read(path, limit)
             if Path(path) == self.report_path:
                 self.report_path.write_bytes(b"not the admitted report")
             return data
+
         with mock.patch.object(module, "_read_regular", side_effect=replace_after_read):
             self.assertEqual(self.build()[0], first)
         with self.assertRaises(ValueError):
@@ -273,6 +347,7 @@ class VariantReviewTests(unittest.TestCase):
 
     def test_publication_preserves_inputs_and_commits_a_complete_digest_set(self):
         from charter_replay.digests import sha256_bytes
+
         before = self.report_path.read_bytes(), self.manifest_path.read_bytes()
         self.assertEqual(self.publish(), 1)
         marker = json.loads((self.output / "review-manifest.json").read_bytes())
@@ -280,7 +355,9 @@ class VariantReviewTests(unittest.TestCase):
         self.assertEqual(set(marker["files"]), names)
         for name, digest in marker["files"].items():
             self.assertEqual(sha256_bytes((self.output / name).read_bytes()), digest)
-        self.assertEqual(before, (self.report_path.read_bytes(), self.manifest_path.read_bytes()))
+        self.assertEqual(
+            before, (self.report_path.read_bytes(), self.manifest_path.read_bytes())
+        )
 
     def test_existing_output_and_input_nested_destinations_are_refused(self):
         module = self.module()
@@ -291,8 +368,13 @@ class VariantReviewTests(unittest.TestCase):
         self.assertEqual((self.output / "keep").read_bytes(), b"other writer")
         for directory in (self.source, self.pack):
             with self.assertRaises(ValueError):
-                module.publish_review(self.source, self.pack, self.report_path,
-                                      self.manifest_path, directory / "nested")
+                module.publish_review(
+                    self.source,
+                    self.pack,
+                    self.report_path,
+                    self.manifest_path,
+                    directory / "nested",
+                )
             self.assertFalse((directory / "nested").exists())
 
     def test_failed_publication_rolls_back_owned_files_and_preserves_other_writer(self):
@@ -300,24 +382,39 @@ class VariantReviewTests(unittest.TestCase):
         publisher = importlib.import_module("charter_replay.publication")
         original_link = publisher.os.link
         order = []
+
         def fail_marker(source, target):
             order.append(Path(target).name)
             if Path(target).name == "review-manifest.json":
                 (self.output / "other").write_bytes(b"keep")
                 raise OSError("injected publication failure")
             return original_link(source, target)
+
         with mock.patch.object(publisher.os, "link", side_effect=fail_marker):
             with self.assertRaises(OSError):
                 self.publish()
         self.assertEqual(order[-1], "review-manifest.json")
         self.assertEqual([p.name for p in self.output.iterdir()], ["other"])
-        self.assertFalse(any(p.name.startswith(".charter-publish-") for p in self.root.iterdir()))
+        self.assertFalse(
+            any(p.name.startswith(".charter-publish-") for p in self.root.iterdir())
+        )
 
     def test_cli_preserves_gate_and_does_not_print_a_result_on_invalid_evidence(self):
         self.module()
-        argv = ["variants", "review", "--source", str(self.source), "--pack", str(self.pack),
-                "--report", str(self.report_path), "--run-manifest", str(self.manifest_path),
-                "--output", str(self.output)]
+        argv = [
+            "variants",
+            "review",
+            "--source",
+            str(self.source),
+            "--pack",
+            str(self.pack),
+            "--report",
+            str(self.report_path),
+            "--run-manifest",
+            str(self.manifest_path),
+            "--output",
+            str(self.output),
+        ]
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             self.assertEqual(app.main(argv), 1)
@@ -339,11 +436,24 @@ class VariantReviewTests(unittest.TestCase):
 
     def test_cli_publication_failure_returns_three_without_success_output(self):
         self.module()
-        argv = ["variants", "review", "--source", str(self.source), "--pack", str(self.pack),
-                "--report", str(self.report_path), "--run-manifest", str(self.manifest_path),
-                "--output", str(self.output)]
+        argv = [
+            "variants",
+            "review",
+            "--source",
+            str(self.source),
+            "--pack",
+            str(self.pack),
+            "--report",
+            str(self.report_path),
+            "--run-manifest",
+            str(self.manifest_path),
+            "--output",
+            str(self.output),
+        ]
         output = io.StringIO()
-        with mock.patch("charter_replay.publication.os.link", side_effect=OSError("no links")):
+        with mock.patch(
+            "charter_replay.publication.os.link", side_effect=OSError("no links")
+        ):
             with redirect_stdout(output), redirect_stderr(io.StringIO()):
                 self.assertEqual(app.main(argv), 3)
         self.assertEqual(output.getvalue(), "")
@@ -351,39 +461,84 @@ class VariantReviewTests(unittest.TestCase):
 
     def test_review_verification_regenerates_instead_of_trusting_rebound_digests(self):
         module = self.module()
-        self.assertTrue(callable(getattr(module, "verify_review", None)), "review verification is missing")
+        self.assertTrue(
+            callable(getattr(module, "verify_review", None)),
+            "review verification is missing",
+        )
         self.assertEqual(self.publish(), 1)
-        self.assertEqual(module.verify_review(self.source, self.pack, self.report_path,
-                                             self.manifest_path, self.output), 1)
+        self.assertEqual(
+            module.verify_review(
+                self.source,
+                self.pack,
+                self.report_path,
+                self.manifest_path,
+                self.output,
+            ),
+            1,
+        )
         from charter_replay.digests import sha256_bytes
+
         html = self.output / "report.html"
-        html.write_bytes(html.read_bytes().replace(b"Shared shape disagreements", b"Unsupported claim"))
+        html.write_bytes(
+            html.read_bytes().replace(
+                b"Shared shape disagreements", b"Unsupported claim"
+            )
+        )
         marker_path = self.output / "review-manifest.json"
         marker = json.loads(marker_path.read_bytes())
         marker["files"]["report.html"] = sha256_bytes(html.read_bytes())
         marker_path.write_bytes(manifest_json_bytes(marker))
         with self.assertRaises(ValueError):
-            module.verify_review(self.source, self.pack, self.report_path, self.manifest_path, self.output)
+            module.verify_review(
+                self.source,
+                self.pack,
+                self.report_path,
+                self.manifest_path,
+                self.output,
+            )
 
     def test_verify_review_cli_keeps_original_gate_without_writing(self):
         module = self.module()
-        self.assertTrue(callable(getattr(module, "verify_review", None)), "review verification is missing")
+        self.assertTrue(
+            callable(getattr(module, "verify_review", None)),
+            "review verification is missing",
+        )
         self.publish()
         before = {p.name: p.read_bytes() for p in self.output.iterdir()}
-        argv = ["variants", "verify-review", "--source", str(self.source), "--pack", str(self.pack),
-                "--report", str(self.report_path), "--run-manifest", str(self.manifest_path),
-                "--review", str(self.output)]
+        argv = [
+            "variants",
+            "verify-review",
+            "--source",
+            str(self.source),
+            "--pack",
+            str(self.pack),
+            "--report",
+            str(self.report_path),
+            "--run-manifest",
+            str(self.manifest_path),
+            "--review",
+            str(self.output),
+        ]
         out = io.StringIO()
         with redirect_stdout(out):
             self.assertEqual(app.main(argv), 1)
-        self.assertEqual(json.loads(out.getvalue()), {"gate": "fail", "status": "review-verified"})
-        self.assertEqual({p.name: p.read_bytes() for p in self.output.iterdir()}, before)
+        self.assertEqual(
+            json.loads(out.getvalue()), {"gate": "fail", "status": "review-verified"}
+        )
+        self.assertEqual(
+            {p.name: p.read_bytes() for p in self.output.iterdir()}, before
+        )
 
     def test_variant_summary_precedes_scores_and_matrices_use_native_details(self):
         files, _ = self.build()
         markup = files["report.html"].decode()
-        self.assertLess(markup.index('id="variant-review"'), markup.index("<h2>Supplied-label agreement"))
-        self.assertIn('<details class="panel"><summary>Seed to shape effects</summary>', markup)
+        self.assertLess(
+            markup.index('id="variant-review"'),
+            markup.index("<h2>Supplied-label agreement"),
+        )
+        self.assertIn(
+            '<details class="panel"><summary>Seed to shape effects</summary>', markup
+        )
 
     def test_clean_comparison_returns_zero_and_source_errors_return_three(self):
         self.module()
@@ -398,8 +553,11 @@ class VariantReviewTests(unittest.TestCase):
         self.report = build_json_report(compared, self.manifest)
         self.save()
         self.assertEqual(self.build()[1], 0)
-        self.report = build_json_report(compared, self.manifest,
-                                       baseline_failures=(SourceFailure("hook-timeout", "Synthetic timeout."),))
+        self.report = build_json_report(
+            compared,
+            self.manifest,
+            baseline_failures=(SourceFailure("hook-timeout", "Synthetic timeout."),),
+        )
         self.save()
         self.assertEqual(self.build()[1], 3)
 

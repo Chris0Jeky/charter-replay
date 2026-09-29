@@ -23,7 +23,9 @@ def _run(arguments: list[str], expected: int) -> None:
         raise RuntimeError(f"{arguments[0]} returned {actual}, expected {expected}")
 
 
-def run_demo(output: Path, *, browser: bool = False, executable: str | None = None) -> dict:
+def run_demo(
+    output: Path, *, browser: bool = False, executable: str | None = None
+) -> dict:
     """Use only the checked synthetic corpus and repository toy hook programs."""
     if not __debug__:
         raise RuntimeError("demonstration checks require assertions enabled")
@@ -35,19 +37,36 @@ def run_demo(output: Path, *, browser: bool = False, executable: str | None = No
     try:
         _run(
             [
-                "variants", "generate", "--source", str(source),
-                "--output", str(pack), "--domain", "posix-external.v1",
-                "--recipe", str(ROOT / "examples/packs/charter-posix-v1.json"),
+                "variants",
+                "generate",
+                "--source",
+                str(source),
+                "--output",
+                str(pack),
+                "--domain",
+                "posix-external.v1",
+                "--recipe",
+                str(ROOT / "examples/packs/charter-posix-v1.json"),
             ],
             0,
         )
         _run(
             [
-                "hooks", "--baseline",
-                json.dumps([sys.executable, str(ROOT / "examples/toy-guard/guard_v1.py")]),
+                "hooks",
+                "--baseline",
+                json.dumps(
+                    [sys.executable, str(ROOT / "examples/toy-guard/guard_v1.py")]
+                ),
                 "--candidate",
-                json.dumps([sys.executable, str(ROOT / "examples/toy-guard/guard_v2.py")]),
-                "--corpus", str(pack), "--output", str(replay), "--jobs", "4",
+                json.dumps(
+                    [sys.executable, str(ROOT / "examples/toy-guard/guard_v2.py")]
+                ),
+                "--corpus",
+                str(pack),
+                "--output",
+                str(replay),
+                "--jobs",
+                "4",
             ],
             1,
         )
@@ -59,8 +78,14 @@ def run_demo(output: Path, *, browser: bool = False, executable: str | None = No
     report = replay / "report" / "report.json"
     manifest = report.with_name("run-manifest.json")
     inputs = [
-        "--source", str(source), "--pack", str(pack),
-        "--report", str(report), "--run-manifest", str(manifest),
+        "--source",
+        str(source),
+        "--pack",
+        str(pack),
+        "--report",
+        str(report),
+        "--run-manifest",
+        str(manifest),
     ]
     _run(["variants", "review", *inputs, "--output", str(review)], 1)
     _run(["variants", "verify-review", *inputs, "--review", str(review)], 1)
@@ -91,17 +116,25 @@ def run_demo(output: Path, *, browser: bool = False, executable: str | None = No
         hostile = json.loads(report.read_bytes())
         for row in hostile["results"]:
             row["candidate"]["reason"] = (
-                '\"><img src=x onerror="window.__injected=1">'
-                '<script>window.__injected=1</script>|\u202e'
+                '"><img src=x onerror="window.__injected=1">'
+                "<script>window.__injected=1</script>|\u202e"
             )
         hostile_report = output / "hostile-report.json"
         hostile_report.write_bytes(report_json_bytes(hostile))
         hostile_review = output / "hostile-review"
         hostile_inputs = [
-            "--source", str(source), "--pack", str(pack),
-            "--report", str(hostile_report), "--run-manifest", str(manifest),
+            "--source",
+            str(source),
+            "--pack",
+            str(pack),
+            "--report",
+            str(hostile_report),
+            "--run-manifest",
+            str(manifest),
         ]
-        _run(["variants", "review", *hostile_inputs, "--output", str(hostile_review)], 1)
+        _run(
+            ["variants", "review", *hostile_inputs, "--output", str(hostile_review)], 1
+        )
         result["hostile_browser"] = check_review(
             hostile_review / "report.html", output / "hostile-browser", executable
         )
@@ -113,11 +146,18 @@ def run_demo(output: Path, *, browser: bool = False, executable: str | None = No
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True, help="new output directory")
+    parser.add_argument(
+        "--output", type=Path, required=True, help="new output directory"
+    )
     parser.add_argument("--browser", action="store_true")
     parser.add_argument("--executable", help="optional installed Chromium executable")
     args = parser.parse_args()
-    print(json.dumps(run_demo(args.output, browser=args.browser, executable=args.executable), sort_keys=True))
+    print(
+        json.dumps(
+            run_demo(args.output, browser=args.browser, executable=args.executable),
+            sort_keys=True,
+        )
+    )
     return 0
 
 
