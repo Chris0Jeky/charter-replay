@@ -22,7 +22,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     generate.add_argument("--domain", required=True, choices=[DOMAIN])
     generate.add_argument("--max-derived", type=int, default=MAX_DERIVED)
-    generate.add_argument("--recipe", help="require exact pack recipe before publication")
+    generate.add_argument(
+        "--recipe", help="require exact pack recipe before publication"
+    )
     verify = commands.add_parser(
         "verify", help="regenerate and verify every bound output byte"
     )
