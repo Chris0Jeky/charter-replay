@@ -26,9 +26,7 @@ def invoke(argv: list[str]) -> int:
             return int(exc.code)
 
 
-def arguments(
-    corpus: Path, output: Path, baseline: str, candidate: str
-) -> list[str]:
+def arguments(corpus: Path, output: Path, baseline: str, candidate: str) -> list[str]:
     return [
         "hooks",
         "--baseline",
