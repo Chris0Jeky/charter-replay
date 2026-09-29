@@ -108,7 +108,7 @@ class ReviewRendererTests(unittest.TestCase):
 
     def test_hostile_html_attributes_and_controls_remain_visible_text(self):
         report = make_report()
-        payload = '\"><img src=x onerror="window.__injected=1"><script>window.__injected=1</script>|\u202e'
+        payload = '"><img src=x onerror="window.__injected=1"><script>window.__injected=1</script>|\u202e'
         for row in report["results"]:
             row["event"]["event_id"] = payload
             row["event"]["command"] = payload
@@ -191,9 +191,9 @@ class ReviewRendererTests(unittest.TestCase):
 
     def test_existing_hook_summary_also_escapes_family_markup(self):
         report = make_report()
-        report["results"][0]["case"]["case_family"] = (
-            "<script>unsafe</script>|[click](url)"
-        )
+        report["results"][0]["case"][
+            "case_family"
+        ] = "<script>unsafe</script>|[click](url)"
         summary = app.breakdown(report)
         outcomes = {
             name: {"outcomes": {"allow": 0}} for name in ("baseline", "candidate")
