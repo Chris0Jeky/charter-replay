@@ -17,7 +17,7 @@ MAX_SEEDS = 5000
 MAX_DERIVED = 15000
 MAX_COMMAND_BYTES = 4096
 
-# Shell builtins and interpreters used as wrappers are deliberately absent.
+# Shell builtins and shell interpreters are deliberately absent.
 EXTERNAL_COMMANDS = frozenset(
     "git rm rmdir cp mv ls cat grep find head tail sed awk sort uniq wc cut tr "
     "diff mkdir touch tar gzip curl wget scp rsync npm npx node python python3 "
@@ -139,8 +139,7 @@ def derive_variants(
             if command == event["command"]:
                 skip = "unchanged-command"
             elif (
-                command is not None
-                and len(command.encode("utf-8")) > MAX_COMMAND_BYTES
+                command is not None and len(command.encode("utf-8")) > MAX_COMMAND_BYTES
             ):
                 skip = "derived-command-too-long"
             if skip:
@@ -172,7 +171,10 @@ def derive_variants(
             seen.add(event_id)
             batch.events.append(
                 dict(
-                    event, event_id=event_id, command=command, source="generated-variant"
+                    event,
+                    event_id=event_id,
+                    command=command,
+                    source="generated-variant",
                 )
             )
             batch.cases.append(

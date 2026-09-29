@@ -83,30 +83,43 @@ can replace parent directories. Use caller-owned, non-adversarial directories.
 A process crash can leave an incomplete directory; inspect and remove it manually
 before retrying. The generator never replaces a pre-existing output directory.
 
-## Included reproducible pack
+## Included reproducible pack recipe
 
-`charter_replay/corpora/charter-posix-v1` contains 104 events: all 50 charter seeds
+`examples/packs/charter-posix-v1.json` binds a 104-event pack: all 50 charter seeds
 plus 54 derived shapes. There are 96 transform skips: 66 for unsupported
 executable forms and 30 for opaque labels. These counts measure this restricted
 vocabulary, not universal reachability. Dangerous and benign seeds both produce
 variants. Cases sharing a seed are dependent observations, not 54 new votes.
 
 ```console
-python -m charter_replay.app variants verify --source charter_replay/corpora/charter --pack charter_replay/corpora/charter-posix-v1
+python -m charter_replay.app variants generate --source charter_replay/corpora/charter --output ./derived --domain posix-external.v1 --recipe examples/packs/charter-posix-v1.json
+python -m charter_replay.app variants verify --source charter_replay/corpora/charter --pack ./derived
 ```
 
 Source manifest SHA-256:
 `ce500fe221ba4d49b107ad83895c97fadebf19a6998916b75ff02bf9a49ef9e2`.
 Output manifest SHA-256:
 `b1d9d64b3d532d4a1bbcb3a7ef575a83bef0b305ab846a8d52797081127447f1`.
-The pack is committed with LF endings, as required by the repository attributes.
+The recipe records all four expected file digests, generator/domain versions,
+source/output manifest digests and counts. `--recipe` checks them against the same
+captured bytes used for publication, before reserving the output directory. A
+stale recipe, a changed source, unexpected recipe keys or a malformed recipe
+fails with exit 2 and publishes nothing. This avoids committing expanded data
+that can drift away from the generator. Tests rebuild the complete 104-event pack
+and verify every digest. The checked recipe is a repository example; installed
+users can generate the same pack from the packaged charter seed.
+
+A recipe binds the expected bytes, not the truth of supplied labels. Its digest
+values are not digital signatures. Regeneration plus review of the source and
+recipe is still required. Keep the generated directory local or package its four
+files for distribution; any ZIP's compression metadata is outside corpus identity.
 
 ## Privacy and evidence limits
 
 Generation is not scrubbing. It preserves all source bodies, and lineage contains
 seed identifiers. Keep derived packs private when their source is private; a
 successful verification is neither anonymization nor permission to publish.
-Only synthetic source material is included in this repository's generated pack.
+The repository's checked recipe uses only the synthetic charter source material.
 A source digest binds bytes, not their author, truth, review quality or fitness.
 The source-hook-derived labels in other packs remain source-hook-derived labels.
 A clean replay on variants is not evidence that untested shapes are unreachable.

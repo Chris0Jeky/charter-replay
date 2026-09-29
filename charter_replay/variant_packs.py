@@ -112,8 +112,10 @@ def build_pack(
     for name, rows in (("events.jsonl", batch.events), ("cases.jsonl", batch.cases)):
         original = captured[name]
         separator = b"\n" if rows and not original.endswith(b"\n") else b""
-        files[name] = original + separator + b"".join(
-            canonical_json_bytes(row) + b"\n" for row in rows
+        files[name] = (
+            original
+            + separator
+            + b"".join(canonical_json_bytes(row) + b"\n" for row in rows)
         )
     output_manifest = validate_corpus_manifest(
         dict(
@@ -144,6 +146,37 @@ def build_pack(
     return files, lineage
 
 
+def pack_recipe(files: dict[str, bytes], lineage: dict[str, Any]) -> dict[str, Any]:
+    """Describe a reproducible pack without committing expanded generated data."""
+    return {
+        "schema_version": "variant-pack-recipe.v1",
+        "domain": DOMAIN,
+        "generator": GENERATOR,
+        "source_manifest_sha256": lineage["source_manifest_sha256"],
+        "output_manifest_sha256": lineage["output_manifest_sha256"],
+        "counts": dict(lineage["counts"]),
+        "files": {name: sha256_bytes(data) for name, data in sorted(files.items())},
+    }
+
+
+def _check_recipe(
+    path: str | Path, files: dict[str, bytes], lineage: dict[str, Any]
+) -> None:
+    try:
+        supplied = json.loads(
+            _read_regular(Path(path), MAX_MANIFEST_BYTES).decode("utf-8"),
+            object_pairs_hook=_unique_object,
+        )
+        if canonical_json_bytes(supplied) != canonical_json_bytes(
+            pack_recipe(files, lineage)
+        ):
+            raise VariantError("pack does not match the requested recipe")
+    except (ValueError, RecursionError) as exc:
+        if isinstance(exc, VariantError):
+            raise
+        raise VariantError("recipe is not valid bounded JSON") from exc
+
+
 def _destination(source: str | Path, destination: str | Path) -> Path:
     lexical = Path(destination).absolute()
     if lexical.name in ("", ".", ".."):
@@ -165,10 +198,13 @@ def generate_pack(
     *,
     domain: str,
     max_derived: int = MAX_DERIVED,
+    recipe: str | Path | None = None,
 ) -> dict[str, Any]:
     """Commit a new pack with an atomic, no-overwrite manifest link as marker."""
     target = _destination(source, destination)
     files, lineage = build_pack(source, domain=domain, max_derived=max_derived)
+    if recipe is not None:
+        _check_recipe(recipe, files, lineage)
     with tempfile.TemporaryDirectory(
         prefix=".charter-variants-", dir=target.parent
     ) as raw:

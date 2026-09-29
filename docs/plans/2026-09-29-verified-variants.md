@@ -42,3 +42,8 @@ pass. Further review adds admission, publication-race and exact-capture tests.
 The record-count preflight test fails before its repair and passes afterward.
 Hosted exact-head CI remains the authority for the supported operating systems;
 local Linux results do not imply a Windows or macOS pass.
+
+Distribution decision: commit a checked pack recipe and all four file digests
+under `examples/packs`, not an opaque generated archive. `--recipe` verifies the
+same captured bytes before publication. Tests materialize all 104 events and
+verify every bound digest. Generated output remains reproducible from source.
