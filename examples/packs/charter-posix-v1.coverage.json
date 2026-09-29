@@ -1,0 +1,144 @@
+{
+  "by_origin": {
+    "derived": {
+      "newly-allowed": 6,
+      "newly-denied": 2,
+      "newly-indeterminate": 0,
+      "resolved-indeterminate": 0,
+      "unchanged": 46
+    },
+    "seed": {
+      "newly-allowed": 4,
+      "newly-denied": 1,
+      "newly-indeterminate": 0,
+      "resolved-indeterminate": 0,
+      "unchanged": 45
+    }
+  },
+  "by_transform": {
+    "env-wrapper.v1": {
+      "changes": {
+        "newly-allowed": 3,
+        "newly-denied": 1,
+        "newly-indeterminate": 0,
+        "resolved-indeterminate": 0,
+        "unchanged": 14
+      },
+      "generated": 18,
+      "shape_effects": {
+        "baseline": {
+          "allow->allow": 12,
+          "allow->deny": 0,
+          "allow->indeterminate": 0,
+          "deny->allow": 0,
+          "deny->deny": 6,
+          "deny->indeterminate": 0,
+          "indeterminate->allow": 0,
+          "indeterminate->deny": 0,
+          "indeterminate->indeterminate": 0
+        },
+        "candidate": {
+          "allow->allow": 14,
+          "allow->deny": 0,
+          "allow->indeterminate": 0,
+          "deny->allow": 0,
+          "deny->deny": 4,
+          "deny->indeterminate": 0,
+          "indeterminate->allow": 0,
+          "indeterminate->deny": 0,
+          "indeterminate->indeterminate": 0
+        }
+      },
+      "skipped": 32
+    },
+    "prefix-whitespace.v1": {
+      "changes": {
+        "newly-allowed": 3,
+        "newly-denied": 1,
+        "newly-indeterminate": 0,
+        "resolved-indeterminate": 0,
+        "unchanged": 14
+      },
+      "generated": 18,
+      "shape_effects": {
+        "baseline": {
+          "allow->allow": 12,
+          "allow->deny": 0,
+          "allow->indeterminate": 0,
+          "deny->allow": 0,
+          "deny->deny": 6,
+          "deny->indeterminate": 0,
+          "indeterminate->allow": 0,
+          "indeterminate->deny": 0,
+          "indeterminate->indeterminate": 0
+        },
+        "candidate": {
+          "allow->allow": 14,
+          "allow->deny": 0,
+          "allow->indeterminate": 0,
+          "deny->allow": 0,
+          "deny->deny": 4,
+          "deny->indeterminate": 0,
+          "indeterminate->allow": 0,
+          "indeterminate->deny": 0,
+          "indeterminate->indeterminate": 0
+        }
+      },
+      "skipped": 32
+    },
+    "quote-words.v1": {
+      "changes": {
+        "newly-allowed": 0,
+        "newly-denied": 0,
+        "newly-indeterminate": 0,
+        "resolved-indeterminate": 0,
+        "unchanged": 18
+      },
+      "generated": 18,
+      "shape_effects": {
+        "baseline": {
+          "allow->allow": 12,
+          "allow->deny": 0,
+          "allow->indeterminate": 0,
+          "deny->allow": 6,
+          "deny->deny": 0,
+          "deny->indeterminate": 0,
+          "indeterminate->allow": 0,
+          "indeterminate->deny": 0,
+          "indeterminate->indeterminate": 0
+        },
+        "candidate": {
+          "allow->allow": 14,
+          "allow->deny": 0,
+          "allow->indeterminate": 0,
+          "deny->allow": 4,
+          "deny->deny": 0,
+          "deny->indeterminate": 0,
+          "indeterminate->allow": 0,
+          "indeterminate->deny": 0,
+          "indeterminate->indeterminate": 0
+        }
+      },
+      "skipped": 32
+    }
+  },
+  "clusters": {
+    "seeds_with_changed_variants": 4,
+    "seeds_with_variants": 18,
+    "total_seeds": 50,
+    "unchanged_seeds_with_changed_variants": 0
+  },
+  "counts": {
+    "derived": 54,
+    "seeds": 50,
+    "skipped": 96
+  },
+  "limitations": [
+    "Decisions are supplied evidence, not authenticated execution records.",
+    "Corpus rows, decision contracts, classifications and counts are checked; policy identity, run identity, gate and execution are not verified.",
+    "Derived labels are inherited assumptions; observations sharing a seed are dependent, not independent votes or proof of reachability or safety.",
+    "No corpus command is executed. Aggregates omit identifiers and command bodies, but small counts can still disclose information about a private corpus."
+  ],
+  "schema_version": "variant-coverage.v1",
+  "status": "verified-projection"
+}

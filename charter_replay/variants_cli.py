@@ -30,8 +30,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     verify.add_argument("--source", required=True)
     verify.add_argument("--pack", required=True)
+    coverage = commands.add_parser(
+        "coverage", help="summarize verified seed and variant replay behavior"
+    )
+    coverage.add_argument("--source", required=True)
+    coverage.add_argument("--pack", required=True)
+    coverage.add_argument("--report", required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command == "coverage":
+            from charter_replay.variant_coverage import build_coverage
+
+            result = build_coverage(args.source, args.pack, args.report)
+            print(json.dumps(result, sort_keys=True))
+            return 0
         if args.command == "generate":
             lineage = generate_pack(
                 args.source,
