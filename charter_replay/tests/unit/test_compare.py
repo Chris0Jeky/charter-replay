@@ -170,7 +170,9 @@ class ComparisonTests(unittest.TestCase):
         ):
             self.assertIn(expected, opening)
         self.assertIn(json.dumps(argv), opening)
-        self.assertIn("'/opt/Python Tools/python3' -m charter_replay.cli replay", opening)
+        self.assertIn(
+            "'/opt/Python Tools/python3' -m charter_replay.cli replay", opening
+        )
         self.assertIn(DECISION_REPLAY_LIMITATION, markdown)
 
     def test_reproduction_rendering_is_exact_for_posix_and_powershell(self) -> None:

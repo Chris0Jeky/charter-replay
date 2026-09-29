@@ -303,14 +303,17 @@ class ProcessSourceTests(unittest.TestCase):
 
     def test_empty_events_fail_before_snapshot_or_process_execution(self) -> None:
         source = ProcessDecisionSource([sys.executable])
-        with mock.patch.object(
-            source,
-            "_prepare_input_snapshot",
-            side_effect=AssertionError("snapshot prepared"),
-        ) as prepare_snapshot, mock.patch(
-            "charter_replay.policy_sources._run_policy_process",
-            side_effect=AssertionError("process executed"),
-        ) as process_run:
+        with (
+            mock.patch.object(
+                source,
+                "_prepare_input_snapshot",
+                side_effect=AssertionError("snapshot prepared"),
+            ) as prepare_snapshot,
+            mock.patch(
+                "charter_replay.policy_sources._run_policy_process",
+                side_effect=AssertionError("process executed"),
+            ) as process_run,
+        ):
             with self.assertRaisesRegex(
                 ValidationError, "CommandEvent corpus: expected at least one record"
             ):

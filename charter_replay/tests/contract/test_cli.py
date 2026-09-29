@@ -441,9 +441,12 @@ for index, event in enumerate(events):
                 return original_replace(path, target)
 
             stderr = io.StringIO()
-            with mock.patch.object(
-                Path, "replace", autospec=True, side_effect=reject_locked_report
-            ), redirect_stderr(stderr):
+            with (
+                mock.patch.object(
+                    Path, "replace", autospec=True, side_effect=reject_locked_report
+                ),
+                redirect_stderr(stderr),
+            ):
                 exit_code = main(self.replay_args(corpus, recording, candidate, output))
 
             self.assertEqual(3, exit_code)
@@ -553,7 +556,8 @@ for index, event in enumerate(events):
             ):
                 first = _load_process_source(f"{sys.executable},{policy}", 5.0)
             with mock.patch(
-                "charter_replay.cli.tempfile.gettempdir", return_value=str(second_parent)
+                "charter_replay.cli.tempfile.gettempdir",
+                return_value=str(second_parent),
             ):
                 second = _load_process_source(f"{sys.executable},{policy}", 5.0)
 
@@ -608,10 +612,13 @@ for index, event in enumerate(events):
             def resolved_command(command):
                 return str(alias if command == "policy-alias" else target)
 
-            with mock.patch(
-                "charter_replay.cli.shutil.which", side_effect=resolved_command
-            ), mock.patch.object(
-                Path, "resolve", autospec=True, side_effect=redirected_resolve
+            with (
+                mock.patch(
+                    "charter_replay.cli.shutil.which", side_effect=resolved_command
+                ),
+                mock.patch.object(
+                    Path, "resolve", autospec=True, side_effect=redirected_resolve
+                ),
             ):
                 alias_source = _load_process_source(f"policy-alias,{policy}", 5.0)
                 target_source = _load_process_source(f"{target},{policy}", 5.0)
@@ -995,18 +1002,22 @@ for index, event in enumerate(events):
             writer = threading.Thread(target=mutate_original)
             writer.start()
 
-            with mock.patch.object(
-                loaded.source,
-                "_prepare_input_snapshot",
-                side_effect=remember_snapshot,
-            ), mock.patch.object(
-                loaded.source,
-                "_evaluate_runtime",
-                side_effect=mutate_before_real_launch,
-            ), mock.patch(
-                "charter_replay.policy_sources._run_policy_process",
-                wraps=policy_sources._run_policy_process,
-            ) as process_run:
+            with (
+                mock.patch.object(
+                    loaded.source,
+                    "_prepare_input_snapshot",
+                    side_effect=remember_snapshot,
+                ),
+                mock.patch.object(
+                    loaded.source,
+                    "_evaluate_runtime",
+                    side_effect=mutate_before_real_launch,
+                ),
+                mock.patch(
+                    "charter_replay.policy_sources._run_policy_process",
+                    wraps=policy_sources._run_policy_process,
+                ) as process_run,
+            ):
                 result = loaded.source.evaluate(EVENTS)
             writer.join(timeout=5.0)
             self.assertFalse(writer.is_alive())
@@ -1210,12 +1221,15 @@ for index, event in enumerate(events):
                 f"replay-process-inputs-{loaded.identity['sha256']}"
             )
 
-            with mock.patch(
-                "charter_replay.policy_sources._normalize_snapshot_mtimes",
-                side_effect=OSError("synthetic normalization failure"),
-            ), mock.patch(
-                "charter_replay.policy_sources._run_policy_process"
-            ) as process_run:
+            with (
+                mock.patch(
+                    "charter_replay.policy_sources._normalize_snapshot_mtimes",
+                    side_effect=OSError("synthetic normalization failure"),
+                ),
+                mock.patch(
+                    "charter_replay.policy_sources._run_policy_process"
+                ) as process_run,
+            ):
                 result = loaded.source.evaluate(EVENTS)
 
         process_run.assert_not_called()
@@ -1281,11 +1295,12 @@ for index, event in enumerate(events):
                 f"replay-process-inputs-{loaded.identity['sha256']}"
             )
 
-            with mock.patch(
-                "charter_replay.policy_sources.shutil.copytree"
-            ) as copytree, mock.patch(
-                "charter_replay.policy_sources._run_policy_process"
-            ) as process_run:
+            with (
+                mock.patch("charter_replay.policy_sources.shutil.copytree") as copytree,
+                mock.patch(
+                    "charter_replay.policy_sources._run_policy_process"
+                ) as process_run,
+            ):
                 result = loaded.source.evaluate(EVENTS)
 
         copytree.assert_not_called()
