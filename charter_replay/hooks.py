@@ -312,6 +312,12 @@ def record_hook(
     if isinstance(jobs, bool) or not isinstance(jobs, int) or jobs < 1:
         raise HookSpecError("jobs must be a positive integer")
 
+    # Retain the initially observed input, not whatever bytes a hook leaves behind.
+    try:
+        initial_identity = hook_identity(spec.argv)
+    except OSError as exc:
+        raise HookSpecError("hook input fingerprint could not be read") from exc
+
     def one(
         item: tuple[int, dict[str, Any]],
     ) -> tuple[HookOutcome, SourceFailure | None]:
@@ -342,6 +348,19 @@ def record_hook(
         observations = list(pool.map(one, enumerate(events)))
     outcomes = [outcome for outcome, _failure in observations]
 
+    input_failure = None
+    try:
+        if hook_identity(spec.argv) != initial_identity:
+            input_failure = SourceFailure(
+                code="hook-input-changed",
+                message="Hook input fingerprint changed during recording.",
+            )
+    except OSError:
+        input_failure = SourceFailure(
+            code="hook-input-unreadable",
+            message="Hook input fingerprint could not be rechecked after recording.",
+        )
+
     output.mkdir(parents=True, exist_ok=True)
     lines = [
         json.dumps(
@@ -358,7 +377,7 @@ def record_hook(
         "policy_id": policy_id,
         # The recorded-source contract names a 40-hex commit. A hook is not
         # always a commit, so this carries a truncated content digest instead.
-        "policy_commit": hook_identity(spec.argv)[:40],
+        "policy_commit": initial_identity[:40],
         "decisions_file": "decisions.jsonl",
         "decisions_sha256": sha256_bytes(decisions_bytes),
         "decision_count": len(lines),
@@ -409,6 +428,8 @@ def record_hook(
     failures.extend(
         failure.as_dict() for _outcome, failure in observations if failure is not None
     )
+    if input_failure is not None:
+        failures.append(input_failure.as_dict())
     return {
         "policy_id": policy_id,
         "events": len(events),
