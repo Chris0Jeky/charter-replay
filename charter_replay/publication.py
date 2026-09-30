@@ -14,6 +14,14 @@ _RESERVED_STEMS.update(
 )
 
 
+class PublicationError(OSError):
+    """An output failure whose message is fixed text, safe to show as it is.
+
+    It never carries a path, file name or hook output. Callers print `str(exc)`
+    and exit 3, where a plain OSError is reduced to its class name.
+    """
+
+
 def new_destination(output: str | Path) -> Path:
     """Resolve an existing parent while refusing every pre-existing target."""
     raw = Path(output).absolute()

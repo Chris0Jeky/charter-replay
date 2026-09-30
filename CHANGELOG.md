@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- A hook working directory outside its event workspace is now a per-event
+  `start-failed` outcome (a source failure, exit 3) recorded like any other start
+  failure, not a whole-run input error (exit 2) that stops the recording.
+- `validate_hook_context` rejects a runtime and contract id that are not a known
+  pair (derived from the runtime registry, plus the historical `codex` with
+  `codex-legacy-floor.v1`). A `--workspace` template that reaches the output
+  through a symlink or junction is `contains-output`, and an argv word with
+  whitespace is hashed whole even when it starts with `/`, so the context id of
+  a hook with such a word can change.
+- `hooks` re-checks each output subdirectory before every stale-file removal and
+  reports several failed removals as one exit 3. `repeat` retries the final
+  rename on `PermissionError` and, if it stays locked, keeps the recordings in a
+  hidden `.charter-repeat-*` directory (exit 3). A stdout that cannot encode the
+  summary (a Windows cp1252 pipe) no longer changes the exit code.
 - **Hook output is bounded.** `record`, `hooks` and `repeat` take
   `--hook-output-limit BYTES` (default 1 MiB per stream, 1 KiB to 64 MiB). A hook
   that prints more to stdout or stderr is killed with its whole process family (the

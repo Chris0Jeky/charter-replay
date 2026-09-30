@@ -23,11 +23,12 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
+import time
 from typing import Any, Sequence
 
 from charter_replay.hooks import ASK_EFFECTS, OUTCOMES, HookSpec, record_hook
 from charter_replay.metrics import latency_summary
-from charter_replay.publication import new_destination
+from charter_replay.publication import PublicationError, new_destination
 from charter_replay.review_reports import markdown_literal
 
 REPEAT_VERSION = "repeat-stability.v1"
@@ -43,6 +44,14 @@ CONTEXT_CHANGED = "repeat-context-changed"
 NOT_RECORDED = "repeat-not-recorded"
 UNREADABLE = "repeat-unreadable"
 _VARYING_ROWS_SHOWN = 100
+# A sync client or antivirus scanner can hold a handle inside the staging
+# directory for a moment, which makes renaming it fail on Windows.
+_RENAME_ATTEMPTS = 5
+_RENAME_DELAY_SECONDS = 0.2
+_KEPT_MESSAGE = (
+    "output failed: the recordings could not be moved into place and were kept "
+    "in a hidden '.charter-repeat-' directory beside the output"
+)
 _DIGITS = re.compile(r"[0-9]{1,4}")
 _LIMITATIONS = (
     "Repeats run one after another, so this measures variation under this host, "
@@ -313,6 +322,28 @@ def read_run(
     return observations, timing
 
 
+def _rename_pause() -> None:
+    # A seam of its own: patching time.sleep would also catch subprocess waits.
+    time.sleep(_RENAME_DELAY_SECONDS)
+
+
+def _rename_into_place(staging: Path, target: Path) -> None:
+    """Rename staging to target, retrying while another process holds a handle.
+
+    Only PermissionError is retried. When every attempt fails the staging
+    directory is left where it is and PublicationError says so without a path.
+    """
+
+    for attempt in range(_RENAME_ATTEMPTS):
+        try:
+            os.rename(staging, target)
+            return
+        except PermissionError:
+            if attempt + 1 < _RENAME_ATTEMPTS:
+                _rename_pause()
+    raise PublicationError(_KEPT_MESSAGE)
+
+
 def _record_repeat(
     spec: HookSpec,
     events: list[dict[str, Any]],
@@ -362,7 +393,9 @@ def run_repeat(
     Every admission check runs before any hook starts. The recordings and
     summaries are built in a hidden staging directory beside the target and
     moved into place at the end, so a crash never leaves a half-written output
-    that looks complete. Returns the stability document and the exit code.
+    that looks complete. If the final rename keeps failing with PermissionError
+    the staging directory is kept and PublicationError is raised (exit 3).
+    Returns the stability document and the exit code.
     """
 
     repeats = parse_repeats(repeats)
@@ -375,7 +408,7 @@ def run_repeat(
         # would copy the earlier repeats' recordings and read as variation.
         raise RepeatInputError("output must be outside the workspace template")
     staging = Path(tempfile.mkdtemp(prefix=".charter-repeat-", dir=target.parent))
-    published = False
+    keep = False
     try:
         event_ids = [event["event_id"] for event in events]
         records = [
@@ -400,9 +433,13 @@ def run_repeat(
             raise ValueError(
                 "output appeared during publication; nothing is overwritten"
             )
-        os.rename(staging, target)
-        published = True
+        try:
+            _rename_into_place(staging, target)
+        except PublicationError:
+            keep = True  # the only copy of the recordings; never delete it
+            raise
+        keep = True  # published: the staging directory is now the target
     finally:
-        if not published:
+        if not keep:
             shutil.rmtree(staging, ignore_errors=True)
     return document, exit_code(document)

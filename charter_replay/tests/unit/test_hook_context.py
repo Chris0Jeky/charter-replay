@@ -13,7 +13,9 @@ import unittest
 from unittest import mock
 
 from charter_replay import hook_context as hc
+from charter_replay.adapters import RUNTIMES, get_adapter
 from charter_replay.hooks import HookSpec
+from charter_replay.tests.links import link_directory
 
 
 class DescriptorTests(unittest.TestCase):
@@ -266,6 +268,23 @@ class DescriptorTests(unittest.TestCase):
                     self.identity(self.spec(sys.executable, "--log", second)),
                 )
 
+    def test_absolute_looking_words_with_whitespace_are_hashed_whole(self):
+        # `/rm -rf/x/` is a regex, not a path; reducing it to `x` would let two
+        # different patterns share an identity.
+        pairs = [
+            ("/rm -rf/x", "/curl -s/x"),
+            ("/a b/", "/c d/"),
+            ("C:\\one two\\out.json", "D:\\three four\\out.json"),
+            ("/one\tdir/out.json", "/two\tdir/out.json"),
+        ]
+        for first, second in pairs:
+            with self.subTest(first=first):
+                self.assertEqual(hc._reduced(first), first)
+                self.assertNotEqual(
+                    self.identity(self.spec(sys.executable, "--match", first)),
+                    self.identity(self.spec(sys.executable, "--match", second)),
+                )
+
     def test_absolute_paths_reduce_by_their_own_flavour_on_any_host(self):
         # Pure-path logic, so a Windows host exercises the POSIX case and back.
         self.assertEqual(hc._reduced("C:\\one\\out.json"), "out.json")
@@ -318,6 +337,27 @@ class DescriptorTests(unittest.TestCase):
             "bound",
         )
 
+    def test_template_directory_link_leading_to_the_output_is_unbound(self):
+        shared = self.root / "shared"
+        shared.mkdir()
+        link_directory(self, self.template / "link", shared)
+        output = shared / "runs" / "x"
+        descriptor = self.describe(template=self.template, output=output)
+        self.assertEqual(
+            descriptor["workspace_template"],
+            {"status": "unbound", "reason": "contains-output"},
+        )
+        self.assertIn("workspace-template", descriptor["unbound"])
+        hc.validate_hook_context(hc.context_document(descriptor))
+        # An output outside every linked directory leaves the template bound.
+        elsewhere = self.root / "elsewhere" / "x"
+        self.assertEqual(
+            self.describe(template=self.template, output=elsewhere)[
+                "workspace_template"
+            ]["status"],
+            "bound",
+        )
+
     @unittest.skipUnless(os.name == "nt", "CreateProcess search rules")
     def test_bare_name_on_windows_hashes_the_exe_createprocess_runs(self):
         first, second = self.root / "a", self.root / "b"
@@ -364,6 +404,43 @@ class ValidatorTests(unittest.TestCase):
         descriptor = copy.deepcopy(self.document["descriptor"])
         descriptor["execution"]["jobs"] = 2**40
         hc.validate_hook_context(hc.context_document(descriptor))
+
+    def with_adapter(self, runtime, contract_id):
+        # Re-derive the id, so only the pair itself can be what is rejected.
+        descriptor = copy.deepcopy(self.document["descriptor"])
+        descriptor["adapter"] = {"runtime": runtime, "contract_id": contract_id}
+        return hc.context_document(descriptor)
+
+    def test_rejects_a_fabricated_runtime_and_contract_pair(self):
+        for runtime, contract_id in (
+            ("claude", "codex-pretooluse.v1"),
+            ("codex", "claude-pretooluse.v1"),
+            ("codex-legacy", "codex-pretooluse.v1"),
+            ("claude", "made-up.v1"),
+        ):
+            with self.subTest(runtime=runtime, contract_id=contract_id):
+                message = self.rejected(self.with_adapter(runtime, contract_id))
+                self.assertIn("descriptor.adapter", message)
+                self.assertNotIn(contract_id, message)
+
+    def test_accepts_the_historical_codex_floor_pair(self):
+        hc.validate_hook_context(self.with_adapter("codex", "codex-legacy-floor.v1"))
+
+    def test_accepts_every_current_registry_pair(self):
+        for name in RUNTIMES:
+            with self.subTest(runtime=name):
+                hc.validate_hook_context(
+                    self.with_adapter(name, get_adapter(name).contract_id)
+                )
+
+    def test_a_newly_registered_runtime_needs_no_change_here(self):
+        adapter = get_adapter("claude")
+        registry = {**{n: get_adapter(n) for n in RUNTIMES}, "extra": adapter}
+        with (
+            mock.patch.object(hc, "RUNTIMES", tuple(registry)),
+            mock.patch.object(hc, "get_adapter", registry.__getitem__),
+        ):
+            hc.validate_hook_context(self.with_adapter("extra", adapter.contract_id))
 
     def test_accepts_the_written_file_form(self):
         hc.validate_hook_context(self.document)

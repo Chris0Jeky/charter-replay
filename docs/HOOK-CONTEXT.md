@@ -51,7 +51,18 @@ Read and hashed (bytes, not paths):
   paths, entry kinds, sizes and file hashes. Empty directories count. A
   template that contains the recording's own output directory is unbound as
   `contains-output`: earlier recordings written there would otherwise feed
-  decisions back into an input-only identity.
+  decisions back into an input-only identity. This includes an output reached
+  through a symlink or junction inside the template, since a copy follows links.
+
+## Validation
+
+`validate_hook_context` accepts a document only when its runtime and adapter
+contract id form a known pair: every `(runtime, contract_id)` in the runtime
+registry at the time of the call, plus the historical pair `codex` with
+`codex-legacy-floor.v1` that recordings made before the Codex contract change
+carry. A fabricated pair, such as `claude` with `codex-pretooluse.v1`, is
+rejected even though each half is valid alone. A newly registered runtime needs
+no change to the validator.
 
 ## Declared only
 
@@ -60,7 +71,11 @@ Recorded as names or hashes, never as values:
 - Other argv words: the SHA-256 of the whole word, except that an absolute path
   (POSIX or Windows form) is first reduced to its basename so an output path does
   not make the identity host-specific. Inline code, regexes, URLs and `--flag=a/b`
-  values are hashed in full. The raw word is never written, since it may carry a
+  values are hashed in full, and so is any word that contains whitespace, even
+  one that starts with `/` (a regex such as `/rm -rf/`). A real path argument
+  with a space in it is therefore hashed whole: the identity then depends on
+  where it lives, which costs portability between machines but never lets two
+  different inputs share an identity. The raw word is never written, since it may carry a
   secret or a machine path.
 - Directory arguments: recorded as kind `directory`, unbound with reason
   `not-captured` and listed as `argv-directory:<index>`. Their contents are not

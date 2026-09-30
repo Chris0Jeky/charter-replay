@@ -59,6 +59,9 @@ _DESCRIPTOR_KEYS = {
     "environment",
     "unbound",
 }
+# Recordings made before the codex contract change named `codex` with the floor
+# contract, which is now the `codex-legacy` runtime.
+_HISTORICAL_ADAPTER_PAIRS = frozenset({("codex", "codex-legacy-floor.v1")})
 _MAX_ARGV_WORDS = 4096
 _MAX_NAME = 4096
 
@@ -95,6 +98,12 @@ def _reduced(word: str) -> str:
     # `--flag=a/b` values also contain slashes and must be hashed in full, or
     # two different policies could share an identity. The basename follows the
     # path's own flavour: a POSIX host does not split `C:\one\out.json`.
+    # A word with whitespace is never reduced: a regex like `/rm -rf/` is
+    # POSIX-absolute too. A real path argument containing a space is rare in
+    # hook argv, and hashing it whole costs portability across machines, never
+    # correctness (two different inputs cannot share an identity).
+    if any(character.isspace() for character in word):
+        return word
     if PureWindowsPath(word).is_absolute():
         return PureWindowsPath(word).name
     if PurePosixPath(word).is_absolute():
@@ -191,11 +200,16 @@ def _template(root: Path, output: Path | None = None) -> dict[str, Any]:
         if _contains(root, output):
             return unbound("contains-output")
         stack = [("", os.path.realpath(root), frozenset())]
+        output_real = None if output is None else Path(os.path.realpath(output))
         # Walk and stat first: nothing is read until both limits are known to hold.
         while stack:
             prefix, real, ancestors = stack.pop()
             if real in ancestors:
                 return unbound("unreadable")
+            # A link inside the template can lead to a directory that holds the
+            # output; the copy follows links, so it would copy the recordings.
+            if output_real is not None and output_real.is_relative_to(real):
+                return unbound("contains-output")
             ancestors = ancestors | {real}
             found = []
             with os.scandir(root / prefix if prefix else root) as scan:
@@ -368,6 +382,17 @@ def _name(value: Any, where: str) -> None:
         raise _fail(f"{where} must be a bare name")
 
 
+def _allowed_adapter_pairs() -> frozenset[tuple[str, str]]:
+    """Every (runtime, contract id) a recording may name.
+
+    Derived from the registry at call time, so a newly registered runtime needs
+    no change here, plus the pairs older recordings legitimately carry.
+    """
+
+    current = {(name, get_adapter(name).contract_id) for name in RUNTIMES}
+    return frozenset(current | _HISTORICAL_ADAPTER_PAIRS)
+
+
 def _validate_argv_item(item: Any, index: int) -> bool:
     """Validate one argv entry; return whether it is unbound."""
 
@@ -452,6 +477,8 @@ def validate_hook_context(document: Any) -> None:
         adapter["contract_id"]
     ):
         raise _fail("descriptor.adapter.contract_id is malformed")
+    if (adapter["runtime"], adapter["contract_id"]) not in _allowed_adapter_pairs():
+        raise _fail("descriptor.adapter is not a known runtime and contract pair")
     mapping = _mapping(
         descriptor["decision_mapping"], {"ask_effect"}, "descriptor.decision_mapping"
     )
