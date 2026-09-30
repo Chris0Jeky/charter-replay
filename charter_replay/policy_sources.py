@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Any
 
 from charter_replay.corpus import (
@@ -31,6 +32,8 @@ RECORDED_MANIFEST_VERSION = "recorded-policy-manifest.v1"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _PROCESS_CLEANUP_GRACE_SECONDS = 1.0
+# How often a hook run's output files are sized while the child runs.
+_OUTPUT_LIMIT_POLL_SECONDS = 0.025
 _RUNNER_DIRECTORY_MODE = 0o700
 SNAPSHOT_MTIME_NS = 946684800_000_000_000
 _WINDOWS_EXEC_FAILURE_PREFIX = b"replay-wrapper-exec-failed:"
@@ -75,10 +78,70 @@ os._exit(process.wait())
 """
 
 
-def _read_process_stream(stream) -> bytes:
+def _read_process_stream(stream, limit: int | None = None) -> bytes:
     stream.flush()
     stream.seek(0)
-    return stream.read()
+    # A limit bounds the read itself: one byte past it proves an overflow.
+    return stream.read() if limit is None else stream.read(limit + 1)
+
+
+class ProcessOutputLimitExceeded(Exception):
+    """A child wrote more than its per-stream output limit; its family is dead."""
+
+    def __init__(self, stream: str, limit: int) -> None:
+        super().__init__(f"{stream} exceeded {limit} bytes")
+        self.stream = stream
+        self.limit = limit
+
+
+def _stream_over_limit(streams: Sequence[tuple[str, Any]], limit: int) -> str | None:
+    """Name the first stream whose file is larger than `limit`, from stat alone."""
+
+    for name, stream in streams:
+        if os.fstat(stream.fileno()).st_size > limit:
+            return name
+    return None
+
+
+def _wait_for_process(
+    process: subprocess.Popen[bytes],
+    timeout_seconds: float,
+    *,
+    output_streams: Sequence[tuple[str, Any]] = (),
+    output_limit: int | None = None,
+) -> bool:
+    """Wait for the child; return True when the timeout elapsed first.
+
+    Without a limit this is the plain timed wait. With one, the wait is sliced
+    so both output files are sized between slices, and it ends early, not timed
+    out, as soon as either is over the limit (or cannot be sized). The caller
+    then takes its ordinary kill path for the whole process family.
+    """
+
+    if output_limit is None:
+        try:
+            process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            return True
+        return False
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return True
+        try:
+            process.wait(timeout=min(_OUTPUT_LIMIT_POLL_SECONDS, remaining))
+        except subprocess.TimeoutExpired:
+            pass
+        else:
+            return False
+        try:
+            if _stream_over_limit(output_streams, output_limit) is not None:
+                return False
+        except OSError:
+            # Unsizeable output is unbounded: stop the family now; the caller's
+            # own sizing raises after the kill.
+            return False
 
 
 def _run_posix_policy_process(
@@ -90,6 +153,7 @@ def _run_posix_policy_process(
     timeout_seconds: float,
     cwd: str | None,
     environment: Mapping[str, str] | None,
+    output_limit: int | None = None,
 ) -> tuple[int, bool]:
     process = subprocess.Popen(
         list(argv),
@@ -101,11 +165,12 @@ def _run_posix_policy_process(
         cwd=cwd,
         env=environment,
     )
-    timed_out = False
-    try:
-        process.wait(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        timed_out = True
+    timed_out = _wait_for_process(
+        process,
+        timeout_seconds,
+        output_streams=(("stdout", stdout_stream), ("stderr", stderr_stream)),
+        output_limit=output_limit,
+    )
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
@@ -218,6 +283,7 @@ def _run_windows_policy_process(
     timeout_seconds: float,
     cwd: str | None,
     environment: Mapping[str, str] | None,
+    output_limit: int | None = None,
 ) -> tuple[int, bool]:
     import ctypes
     from ctypes import wintypes
@@ -267,10 +333,12 @@ def _run_windows_policy_process(
         assigned = True
         if not kernel32.SetEvent(event):
             raise ctypes.WinError(ctypes.get_last_error())
-        try:
-            process.wait(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
-            timed_out = True
+        timed_out = _wait_for_process(
+            process,
+            timeout_seconds,
+            output_streams=(("stdout", stdout_stream), ("stderr", stderr_stream)),
+            output_limit=output_limit,
+        )
         if not kernel32.TerminateJobObject(job, 1):
             raise ctypes.WinError(ctypes.get_last_error())
         wait_result = kernel32.WaitForSingleObject(
@@ -304,7 +372,19 @@ def _run_policy_process(
     timeout_seconds: float,
     cwd: str | None,
     environment: Mapping[str, str] | None,
+    output_limit: int | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
+    """Run one child to completion, killing its process family on timeout.
+
+    `output_limit` (bytes per stream) is for callers that cannot trust the child
+    to stay quiet, such as hook runs. `None`, the kernel `process:` path, adds
+    nothing: no sizing, no bounded read, and the runners get no extra argument.
+    With a limit, exceeding it kills the family through the same path as a
+    timeout and raises ProcessOutputLimitExceeded, which takes precedence over
+    a timeout that ran out in the same slice.
+    """
+
+    extra = {} if output_limit is None else {"output_limit": output_limit}
     with (
         tempfile.TemporaryFile() as stdin_stream,
         tempfile.TemporaryFile() as stdout_stream,
@@ -321,6 +401,7 @@ def _run_policy_process(
                 timeout_seconds=timeout_seconds,
                 cwd=cwd,
                 environment=environment,
+                **extra,
             )
         else:
             returncode, timed_out = _run_posix_policy_process(
@@ -331,11 +412,24 @@ def _run_policy_process(
                 timeout_seconds=timeout_seconds,
                 cwd=cwd,
                 environment=environment,
+                **extra,
             )
+        if output_limit is not None:
+            # The family is dead, so the files are final (bar an escapee).
+            streams = (("stdout", stdout_stream), ("stderr", stderr_stream))
+            overflowed = _stream_over_limit(streams, output_limit)
+            if overflowed is not None:
+                raise ProcessOutputLimitExceeded(overflowed, output_limit)
         if timed_out:
             raise subprocess.TimeoutExpired(list(argv), timeout_seconds)
-        stdout = _read_process_stream(stdout_stream)
-        stderr = _read_process_stream(stderr_stream)
+        stdout = _read_process_stream(stdout_stream, output_limit)
+        stderr = _read_process_stream(stderr_stream, output_limit)
+        if output_limit is not None:
+            # A descendant that escaped the family may write after the sizing
+            # above; the bounded read notices without reading any further.
+            for name, data in (("stdout", stdout), ("stderr", stderr)):
+                if len(data) > output_limit:
+                    raise ProcessOutputLimitExceeded(name, output_limit)
         if (
             os.name == "nt"
             and returncode == 127
