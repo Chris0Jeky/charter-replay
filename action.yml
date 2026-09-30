@@ -1,0 +1,184 @@
+name: charter-replay
+description: >-
+  Replay a hook corpus through a baseline and a candidate PreToolUse hook and
+  fail the step when the candidate regresses. Needs no token permissions.
+author: Cristian Tcaci
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  baseline:
+    description: Baseline hook command (POSIX-quoted words or a JSON array).
+    required: true
+  candidate:
+    description: Candidate hook command (POSIX-quoted words or a JSON array).
+    required: true
+  corpus:
+    description: Corpus directory. Empty selects the bundled public charter corpus.
+    required: false
+    default: ""
+  workspace:
+    description: Template directory copied into each hook's working directory.
+    required: false
+    default: ""
+  runtime:
+    description: Hook runtime adapter (`claude` or `codex`). Empty keeps the CLI default.
+    required: false
+    default: ""
+  ask-as:
+    description: Replay effect for an `ask` decision. Empty keeps the CLI default.
+    required: false
+    default: ""
+  hook-timeout:
+    description: Seconds allowed per hook invocation. Empty keeps the CLI default.
+    required: false
+    default: ""
+  jobs:
+    description: Parallel hook invocations. Empty keeps the CLI default.
+    required: false
+    default: ""
+  fail-on:
+    description: Comma-separated classes that fail the gate. Empty keeps the CLI default.
+    required: false
+    default: ""
+  output:
+    description: Output directory. Empty creates a fresh directory under the runner temp.
+    required: false
+    default: ""
+  summary:
+    description: Append summary.md to the job summary (`true` or `false`).
+    required: false
+    default: "true"
+
+outputs:
+  exit-code:
+    description: Exit code of charter-replay (0 pass, 1 regression, 2 invalid input, 3 hook or source failure).
+    value: ${{ steps.replay.outputs.exit-code }}
+  gate:
+    description: >-
+      `pass`, `regression` or `error`, read from summary.json. `error` also
+      covers a run that wrote no summary.json (invalid input).
+    value: ${{ steps.replay.outputs.gate }}
+  output-dir:
+    description: Directory holding summary.json, summary.md and the recordings.
+    value: ${{ steps.replay.outputs.output-dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install charter-replay into an isolated environment
+      id: install
+      shell: bash
+      run: |
+        # Any Python 3.11+ already on PATH; the action does not choose one.
+        py=""
+        for candidate in python3 python; do
+          if command -v "$candidate" >/dev/null 2>&1 \
+            && "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
+            py="$candidate"
+            break
+          fi
+        done
+        if [ -z "$py" ]; then
+          echo "::error::charter-replay needs python3 or python (3.11 or newer) on PATH."
+          exit 1
+        fi
+        venv="$RUNNER_TEMP/charter-replay-venv"
+        "$py" -m venv --clear "$venv"
+        if [ -f "$venv/Scripts/python.exe" ]; then
+          venv_python="$venv/Scripts/python.exe"
+        else
+          venv_python="$venv/bin/python"
+        fi
+        # The package has no runtime dependencies; pip fetches only the
+        # setuptools build backend. The tool comes from this action's checkout,
+        # so pinning the action by commit SHA pins the tool revision.
+        PIP_NO_INPUT=1 "$venv_python" -m pip install --no-deps --disable-pip-version-check --quiet "$GITHUB_ACTION_PATH"
+        echo "python=$venv_python" >> "$GITHUB_OUTPUT"
+
+    - name: Replay the corpus through both hooks
+      id: replay
+      shell: bash
+      env:
+        CR_PYTHON: ${{ steps.install.outputs.python }}
+        CR_BASELINE: ${{ inputs.baseline }}
+        CR_CANDIDATE: ${{ inputs.candidate }}
+        CR_CORPUS: ${{ inputs.corpus }}
+        CR_WORKSPACE: ${{ inputs.workspace }}
+        CR_RUNTIME: ${{ inputs.runtime }}
+        CR_ASK_AS: ${{ inputs.ask-as }}
+        CR_HOOK_TIMEOUT: ${{ inputs.hook-timeout }}
+        CR_JOBS: ${{ inputs.jobs }}
+        CR_FAIL_ON: ${{ inputs.fail-on }}
+        CR_OUTPUT: ${{ inputs.output }}
+      run: |
+        out="$CR_OUTPUT"
+        if [ -z "$out" ]; then
+          out="$("$CR_PYTHON" -c 'import os, tempfile; print(tempfile.mkdtemp(prefix="charter-replay-", dir=os.environ["RUNNER_TEMP"]))')"
+        fi
+        corpus="$CR_CORPUS"
+        if [ -z "$corpus" ]; then
+          corpus="$GITHUB_ACTION_PATH/charter_replay/corpora/charter"
+        fi
+        # A summary left by an earlier run must not be read as this one.
+        rm -f -- "$out/summary.json" "$out/summary.md"
+
+        args=(hooks --baseline "$CR_BASELINE" --candidate "$CR_CANDIDATE" --corpus "$corpus" --output "$out")
+        if [ -n "$CR_WORKSPACE" ]; then args+=(--workspace "$CR_WORKSPACE"); fi
+        if [ -n "$CR_RUNTIME" ]; then args+=(--runtime "$CR_RUNTIME"); fi
+        if [ -n "$CR_ASK_AS" ]; then args+=(--ask-as "$CR_ASK_AS"); fi
+        if [ -n "$CR_HOOK_TIMEOUT" ]; then args+=(--hook-timeout "$CR_HOOK_TIMEOUT"); fi
+        if [ -n "$CR_JOBS" ]; then args+=(--jobs "$CR_JOBS"); fi
+        if [ -n "$CR_FAIL_ON" ]; then args+=(--fail-on "$CR_FAIL_ON"); fi
+
+        # The step must survive a nonzero exit so outputs and the summary are written.
+        code=0
+        "$CR_PYTHON" -I -m charter_replay.app "${args[@]}" || code=$?
+
+        gate=error
+        if [ -f "$out/summary.json" ]; then
+          gate="$("$CR_PYTHON" -c '
+        import json, sys
+        try:
+            with open(sys.argv[1], encoding="utf-8") as handle:
+                status = json.load(handle)["gate"]["status"]
+        except (OSError, ValueError, KeyError, TypeError):
+            status = "error"
+        print({"pass": "pass", "fail": "regression"}.get(status, "error"))
+        ' "$out/summary.json")" || gate=error
+        fi
+        {
+          echo "exit-code=$code"
+          echo "gate=$gate"
+          echo "output-dir=$out"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Append the summary to the job summary
+      if: ${{ !cancelled() && inputs.summary == 'true' && steps.replay.outputs.output-dir != '' }}
+      shell: bash
+      env:
+        CR_OUTPUT_DIR: ${{ steps.replay.outputs.output-dir }}
+      run: |
+        md="$CR_OUTPUT_DIR/summary.md"
+        limit=61440
+        if [ -f "$md" ]; then
+          size="$(wc -c < "$md")"
+          head -c "$limit" "$md" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$((size + 0))" -gt "$limit" ]; then
+            printf '\n\n_summary.md truncated at %s bytes; the full file is in the output directory._\n' "$limit" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        else
+          printf '## charter-replay\n\nNo summary.md was written (see the step log).\n' >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Fail when charter-replay exited nonzero
+      if: ${{ !cancelled() && steps.replay.outputs.exit-code != '' && steps.replay.outputs.exit-code != '0' }}
+      shell: bash
+      env:
+        CR_EXIT_CODE: ${{ steps.replay.outputs.exit-code }}
+        CR_GATE: ${{ steps.replay.outputs.gate }}
+      run: |
+        echo "::error::charter-replay exited $CR_EXIT_CODE (gate: $CR_GATE)."
+        exit "$CR_EXIT_CODE"
