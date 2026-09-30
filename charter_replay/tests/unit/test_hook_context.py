@@ -13,6 +13,7 @@ import unittest
 from unittest import mock
 
 from charter_replay import hook_context as hc
+from charter_replay.adapters import RUNTIMES, get_adapter
 from charter_replay.hooks import HookSpec
 
 
@@ -361,6 +362,43 @@ class ValidatorTests(unittest.TestCase):
         descriptor = copy.deepcopy(self.document["descriptor"])
         descriptor["execution"]["jobs"] = 2**40
         hc.validate_hook_context(hc.context_document(descriptor))
+
+    def with_adapter(self, runtime, contract_id):
+        # Re-derive the id, so only the pair itself can be what is rejected.
+        descriptor = copy.deepcopy(self.document["descriptor"])
+        descriptor["adapter"] = {"runtime": runtime, "contract_id": contract_id}
+        return hc.context_document(descriptor)
+
+    def test_rejects_a_fabricated_runtime_and_contract_pair(self):
+        for runtime, contract_id in (
+            ("claude", "codex-pretooluse.v1"),
+            ("codex", "claude-pretooluse.v1"),
+            ("codex-legacy", "codex-pretooluse.v1"),
+            ("claude", "made-up.v1"),
+        ):
+            with self.subTest(runtime=runtime, contract_id=contract_id):
+                message = self.rejected(self.with_adapter(runtime, contract_id))
+                self.assertIn("descriptor.adapter", message)
+                self.assertNotIn(contract_id, message)
+
+    def test_accepts_the_historical_codex_floor_pair(self):
+        hc.validate_hook_context(self.with_adapter("codex", "codex-legacy-floor.v1"))
+
+    def test_accepts_every_current_registry_pair(self):
+        for name in RUNTIMES:
+            with self.subTest(runtime=name):
+                hc.validate_hook_context(
+                    self.with_adapter(name, get_adapter(name).contract_id)
+                )
+
+    def test_a_newly_registered_runtime_needs_no_change_here(self):
+        adapter = get_adapter("claude")
+        registry = {**{n: get_adapter(n) for n in RUNTIMES}, "extra": adapter}
+        with (
+            mock.patch.object(hc, "RUNTIMES", tuple(registry)),
+            mock.patch.object(hc, "get_adapter", registry.__getitem__),
+        ):
+            hc.validate_hook_context(self.with_adapter("extra", adapter.contract_id))
 
     def test_accepts_the_written_file_form(self):
         hc.validate_hook_context(self.document)

@@ -58,6 +58,9 @@ _DESCRIPTOR_KEYS = {
     "environment",
     "unbound",
 }
+# Recordings made before the codex contract change named `codex` with the floor
+# contract, which is now the `codex-legacy` runtime.
+_HISTORICAL_ADAPTER_PAIRS = frozenset({("codex", "codex-legacy-floor.v1")})
 _MAX_ARGV_WORDS = 4096
 _MAX_NAME = 4096
 
@@ -363,6 +366,17 @@ def _name(value: Any, where: str) -> None:
         raise _fail(f"{where} must be a bare name")
 
 
+def _allowed_adapter_pairs() -> frozenset[tuple[str, str]]:
+    """Every (runtime, contract id) a recording may name.
+
+    Derived from the registry at call time, so a newly registered runtime needs
+    no change here, plus the pairs older recordings legitimately carry.
+    """
+
+    current = {(name, get_adapter(name).contract_id) for name in RUNTIMES}
+    return frozenset(current | _HISTORICAL_ADAPTER_PAIRS)
+
+
 def _validate_argv_item(item: Any, index: int) -> bool:
     """Validate one argv entry; return whether it is unbound."""
 
@@ -447,6 +461,8 @@ def validate_hook_context(document: Any) -> None:
         adapter["contract_id"]
     ):
         raise _fail("descriptor.adapter.contract_id is malformed")
+    if (adapter["runtime"], adapter["contract_id"]) not in _allowed_adapter_pairs():
+        raise _fail("descriptor.adapter is not a known runtime and contract pair")
     mapping = _mapping(
         descriptor["decision_mapping"], {"ask_effect"}, "descriptor.decision_mapping"
     )
