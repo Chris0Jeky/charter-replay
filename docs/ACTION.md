@@ -47,7 +47,8 @@ the CLI exits nonzero, after the outputs and job summary are written. Add
 | `jobs` | CLI default (4) | parallel invocations |
 | `fail-on` | CLI default | comma-separated classes that fail the gate |
 | `output` | fresh directory under the runner temp | output directory |
-| `summary` | `true` | append `summary.md` to the job summary |
+| `summary` | `true` | append the summary to the job summary |
+| `summary-mode` | `full` | `full` appends `summary.md`; `aggregate` appends `aggregate.md` (counts only, see [AGGREGATE.md](AGGREGATE.md)); any other value exits 2 before anything runs |
 
 An empty optional input is not passed to the CLI, so its default applies.
 Every input reaches the shell through `env:` and quoted expansion
@@ -61,11 +62,24 @@ input are data to the CLI, not shell syntax. The self-test job asserts this.
 |---|---|
 | `exit-code` | the CLI exit code: 0 pass, 1 regression, 2 invalid input, 3 hook or source failure |
 | `gate` | `pass`, `regression` or `error`, read from `summary.json` (`fail` becomes `regression`) |
-| `output-dir` | directory with `summary.json`, `summary.md`, recordings and the report |
+| `output-dir` | directory with `summary.json`, `summary.md`, `aggregate.json`, `aggregate.md`, recordings and the report |
+| `aggregate-path` | path of `aggregate.json`, or empty when none was written |
 
 `gate` is `error` when the gate reports an error and also when no
 `summary.json` exists, which is what an invalid-input exit (code 2) produces.
 The job summary carries `summary.md` truncated at 60 KiB with a marker.
+
+### Private corpora: `summary-mode: aggregate`
+
+`summary.md` lists free-text case family names, and everyone who can read the
+run can read the job summary and the step log. With `summary-mode: aggregate`
+the job summary carries `aggregate.md` instead: counts over fixed vocabularies
+(diff classes, hook outcomes, case classes, gate status, source-failure codes) and
+nothing else, verified against the report before it is written. In this mode the
+CLI's stdout, which is the full summary, is also kept out of the step log. If the
+aggregate is refused, the step exits 3 and the job summary says that no
+`aggregate.md` was written. The output directory still holds the full files, so
+do not upload it for a private corpus. Details: [AGGREGATE.md](AGGREGATE.md).
 
 ## Runner requirements
 
