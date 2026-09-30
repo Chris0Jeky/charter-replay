@@ -20,6 +20,8 @@ from charter_replay.hooks import parse_hook_command, record_hook
 from charter_replay.policy_sources import SourceFailure
 from charter_replay.metrics import render_label_summary, score_labels
 
+from charter_replay.review_reports import markdown_literal
+
 PROG = "charter-replay"
 SUMMARY_JSON = "summary.json"
 SUMMARY_MD = "summary.md"
@@ -192,7 +194,7 @@ def render_summary(summary: dict[str, Any], outcomes: dict[str, Any]) -> str:
     lines += ["|---|" + "---:|" * len(classes)]
     for key, row in summary["by_case_class"].items():
         cells = " | ".join(str(row.get(name, 0)) for name in classes)
-        lines.append(f"| {key} | {cells} |")
+        lines.append(f"| {markdown_literal(key)} | {cells} |")
     changed = {k: v for k, v in summary["by_case_family"].items() if _changed(v)}
     if changed:
         lines += ["", "## Families with changes", "", "| family | changes |"]
@@ -203,7 +205,7 @@ def render_summary(summary: dict[str, Any], outcomes: dict[str, Any]) -> str:
                 for label, count in sorted(row.items())
                 if label != "unchanged"
             )
-            lines.append(f"| {key} | {detail} |")
+            lines.append(f"| {markdown_literal(key)} | {detail} |")
     lines += ["", render_label_summary(summary["label_agreement"])]
     lines += [
         "",

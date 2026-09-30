@@ -43,6 +43,11 @@ from charter_replay.policy_sources import (
     SourceFailure,
     validate_recorded_manifest,
 )
+from charter_replay.review_reports import (
+    REPORT_FILES,
+    render_html,
+    render_pr_comment,
+)
 from charter_replay.reports import (
     build_json_report,
     render_markdown_report,
@@ -436,13 +441,25 @@ def _publish_report_set(
     run_manifest_bytes: bytes,
     report_bytes: bytes,
     markdown_bytes: bytes,
+    html_bytes: bytes | None = None,
+    comment_bytes: bytes | None = None,
+    aggregate_bytes: bytes | None = None,
 ) -> None:
-    """Stage and transactionally replace the three report artifacts."""
+    """Stage and transactionally replace the requested report artifacts."""
 
     artifacts = (
         ("run-manifest.json", run_manifest_bytes),
         ("report.json", report_bytes),
         ("report.md", markdown_bytes),
+    )
+    artifacts += tuple(
+        (name, content)
+        for name, content in (
+            ("report.html", html_bytes),
+            ("pr-comment.md", comment_bytes),
+            ("pr-comment-aggregate.md", aggregate_bytes),
+        )
+        if content is not None
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     staging_root = Path(tempfile.mkdtemp(prefix=".replay-output-", dir=output.parent))
@@ -522,10 +539,7 @@ def _validated_output_path(
                 raise ReplayInputError("output overlaps a bound process-policy tree")
             if output.is_relative_to(snapshot_root):
                 raise ReplayInputError("output overlaps a reserved process snapshot")
-            report_targets = {
-                (output / name).resolve()
-                for name in ("report.json", "report.md", "run-manifest.json")
-            }
+            report_targets = {(output / name).resolve() for name in REPORT_FILES}
             for entry in policy_root.rglob("*"):
                 if entry.is_symlink() and entry.resolve(strict=True) in report_targets:
                     raise ReplayInputError(
@@ -617,6 +631,11 @@ def _run_replay(
                 reproduction_argv=reproduction_argv,
                 reproduction_shell=reproduction_shell,
             ).encode("utf-8"),
+            html_bytes=render_html(report).encode("utf-8"),
+            comment_bytes=render_pr_comment(report).encode("utf-8"),
+            aggregate_bytes=render_pr_comment(report, aggregate_only=True).encode(
+                "utf-8"
+            ),
         )
     except OSError as exc:
         print(f"replay output failed: {exc}", file=sys.stderr)
