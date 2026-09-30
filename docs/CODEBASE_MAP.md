@@ -119,8 +119,8 @@ in the roadmap and individual PR evidence.
 5. Labels and variants: label agreement exposes denominators and coverage (#11).
    Variants carry verified seed lineage and visible skips (#14). Coverage separates
    cross-version changes from within-policy shape disagreement (#15, #17).
-6. Presentation: the HTML report, the PR text and `summary.md` escape every
-   free-text field (#12). The kernel `report.md` escapes only HTML and table pipes.
+6. Presentation: the HTML report, the PR text, `summary.md` and the kernel `report.md`
+   table cells and source-failure lines escape every free-text field (#12, #40).
    By default the PR text omits commands and reasons but still lists up to 20
    changed case identifiers. Only `pr-comment-aggregate.md` omits case and policy
    identifiers. Verified aggregate-only publication for private corpora is still
