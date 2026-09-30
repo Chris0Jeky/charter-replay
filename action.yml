@@ -35,6 +35,13 @@ inputs:
     description: Seconds allowed per hook invocation. Empty keeps the CLI default.
     required: false
     default: ""
+  hook-output-limit:
+    description: >-
+      Bytes each hook may print to stdout and to stderr before it is killed and
+      recorded as `output-limit` (the CLI validates the range). Empty keeps the
+      CLI default.
+    required: false
+    default: ""
   jobs:
     description: Parallel hook invocations. Empty keeps the CLI default.
     required: false
@@ -77,6 +84,12 @@ outputs:
       Path of aggregate.json (the verified aggregate.v1 counts), or empty when
       none was written.
     value: ${{ steps.replay.outputs.aggregate-path }}
+  summary-source:
+    description: >-
+      The file the summary step appended to the job summary: `summary.md`,
+      `aggregate.md`, or `none` when the chosen file was not written. Empty when
+      the summary step did not run (`summary: false`).
+    value: ${{ steps.summary.outputs.summary-source }}
 
 runs:
   using: composite
@@ -123,6 +136,7 @@ runs:
         CR_RUNTIME: ${{ inputs.runtime }}
         CR_ASK_AS: ${{ inputs.ask-as }}
         CR_HOOK_TIMEOUT: ${{ inputs.hook-timeout }}
+        CR_HOOK_OUTPUT_LIMIT: ${{ inputs.hook-output-limit }}
         CR_JOBS: ${{ inputs.jobs }}
         CR_FAIL_ON: ${{ inputs.fail-on }}
         CR_OUTPUT: ${{ inputs.output }}
@@ -158,6 +172,7 @@ runs:
         if [ -n "$CR_RUNTIME" ]; then args+=(--runtime "$CR_RUNTIME"); fi
         if [ -n "$CR_ASK_AS" ]; then args+=(--ask-as "$CR_ASK_AS"); fi
         if [ -n "$CR_HOOK_TIMEOUT" ]; then args+=(--hook-timeout "$CR_HOOK_TIMEOUT"); fi
+        if [ -n "$CR_HOOK_OUTPUT_LIMIT" ]; then args+=(--hook-output-limit "$CR_HOOK_OUTPUT_LIMIT"); fi
         if [ -n "$CR_JOBS" ]; then args+=(--jobs "$CR_JOBS"); fi
         if [ -n "$CR_FAIL_ON" ]; then args+=(--fail-on "$CR_FAIL_ON"); fi
 
@@ -193,6 +208,7 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
     - name: Append the summary to the job summary
+      id: summary
       if: ${{ !cancelled() && inputs.summary == 'true' && steps.replay.outputs.output-dir != '' }}
       shell: bash
       env:
@@ -207,12 +223,14 @@ runs:
         fi
         limit=61440
         if [ -f "$md" ]; then
+          echo "summary-source=$name" >> "$GITHUB_OUTPUT"
           size="$(wc -c < "$md")"
           head -c "$limit" "$md" >> "$GITHUB_STEP_SUMMARY"
           if [ "$((size + 0))" -gt "$limit" ]; then
             printf '\n\n_%s truncated at %s bytes; the full file is in the output directory._\n' "$name" "$limit" >> "$GITHUB_STEP_SUMMARY"
           fi
         else
+          echo "summary-source=none" >> "$GITHUB_OUTPUT"
           printf '## charter-replay\n\nNo %s was written (see the step log).\n' "$name" >> "$GITHUB_STEP_SUMMARY"
         fi
 

@@ -38,10 +38,13 @@ jobs:
           EXIT_CODE: ${{ steps.regression.outputs.exit-code }}
           GATE: ${{ steps.regression.outputs.gate }}
           OUT: ${{ steps.regression.outputs.output-dir }}
+          SUMMARY_SOURCE: ${{ steps.regression.outputs.summary-source }}
         run: |
           test "$OUTCOME" = failure
           test "$EXIT_CODE" = 1
           test "$GATE" = regression
+          # The summary step reports the file it appended (full mode: summary.md).
+          test "$SUMMARY_SOURCE" = summary.md
           test -n "$OUT"
           grep -q 'newly-allowed' "$OUT/summary.md"
           grep -q '| newly-allowed | 4 |' "$OUT/summary.md"
@@ -117,11 +120,15 @@ jobs:
           EXIT_CODE: ${{ steps.aggregate.outputs.exit-code }}
           OUT: ${{ steps.aggregate.outputs.output-dir }}
           AGGREGATE_PATH: ${{ steps.aggregate.outputs.aggregate-path }}
+          SUMMARY_SOURCE: ${{ steps.aggregate.outputs.summary-source }}
           CASES: ${{ github.workspace }}/charter_replay/corpora/charter/cases.jsonl
         run: |
           test "$OUTCOME" = failure
           test "$EXIT_CODE" = 1
           test -f "$AGGREGATE_PATH"
+          # The summary step itself reports what it appended: aggregate.md, never
+          # summary.md (which carries the family names).
+          test "$SUMMARY_SOURCE" = aggregate.md
           py=""
           for candidate in python3 python; do
             if "$candidate" -c 'import sys' >/dev/null 2>&1; then
@@ -130,9 +137,9 @@ jobs:
             fi
           done
           test -n "$py"
-          # The summary step appends exactly aggregate.md in this mode. A step's
-          # own GITHUB_STEP_SUMMARY file is not readable from a later step, so the
-          # appended file is what is asserted on.
+          # A step's own GITHUB_STEP_SUMMARY file is not readable from a later
+          # step, so the appended source is asserted through the summary-source
+          # output above and the content of that file below.
           "$py" - <<'PY'
           import json
           import os
@@ -175,3 +182,48 @@ jobs:
           test "$OUTCOME" = failure
           test -z "$OUT"
           test ! -e "$GITHUB_WORKSPACE/injected-marker4"
+
+      - name: Replay a flooding candidate with a small hook output limit
+        id: output-limit
+        uses: ./
+        continue-on-error: true
+        with:
+          baseline: python examples/toy-guard/guard_v1.py
+          candidate: python charter_replay/tests/fixtures/hooks/output_hook.py stdout-flood 1024
+          corpus: charter_replay/corpora/charter
+          hook-output-limit: '1024'
+          output: ${{ runner.temp }}/action-output-limit
+      - name: Assert the flood was cut off as an output-limit source failure
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.output-limit.outcome }}
+          EXIT_CODE: ${{ steps.output-limit.outputs.exit-code }}
+          GATE: ${{ steps.output-limit.outputs.gate }}
+          OUT: ${{ steps.output-limit.outputs.output-dir }}
+        run: |
+          test "$OUTCOME" = failure
+          test "$EXIT_CODE" = 3
+          test "$GATE" = error
+          test -f "$OUT/summary.json"
+          # Every candidate hook was killed at the limit and recorded as
+          # output-limit; the baseline stayed under it.
+          grep -q '"output-limit": 50' "$OUT/summary.json"
+          grep -q '"code": "hook-output-limit"' "$OUT/summary.json"
+
+      - name: Reject a malformed hook-output-limit as invalid input
+        id: bad-limit
+        uses: ./
+        continue-on-error: true
+        with:
+          baseline: python examples/toy-guard/guard_v1.py
+          candidate: python examples/toy-guard/guard_v1.py
+          hook-output-limit: '10$(touch injected-marker5)'
+      - name: Assert the malformed limit reached the CLI as data
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.bad-limit.outputs.exit-code }}
+          GATE: ${{ steps.bad-limit.outputs.gate }}
+        run: |
+          test "$EXIT_CODE" = 2
+          test "$GATE" = error
+          test ! -e "$GITHUB_WORKSPACE/injected-marker5"

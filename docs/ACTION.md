@@ -44,6 +44,7 @@ the CLI exits nonzero, after the outputs and job summary are written. Add
 | `runtime` | CLI default (`claude`) | `claude`, `codex`, `codex-legacy` or `gemini` (see RUNTIME_CONTRACTS.md) |
 | `ask-as` | CLI default (`deny`) | replay effect of an `ask` decision |
 | `hook-timeout` | CLI default (10) | seconds per hook invocation |
+| `hook-output-limit` | CLI default (1 MiB) | bytes each hook may print to stdout and to stderr before it is killed and recorded as `output-limit`; the CLI validates the range (1024 to 67108864) and exits 2 otherwise |
 | `jobs` | CLI default (4) | parallel invocations |
 | `fail-on` | CLI default | comma-separated classes that fail the gate |
 | `output` | fresh directory under the runner temp | output directory |
@@ -64,6 +65,7 @@ input are data to the CLI, not shell syntax. The self-test job asserts this.
 | `gate` | `pass`, `regression` or `error`, read from `summary.json` (`fail` becomes `regression`) |
 | `output-dir` | directory with `summary.json`, `summary.md`, `aggregate.json`, `aggregate.md`, recordings and the report |
 | `aggregate-path` | path of `aggregate.json`, or empty when none was written |
+| `summary-source` | the file the summary step appended to the job summary: `summary.md`, `aggregate.md`, or `none` when the chosen file was not written; empty when the step did not run (`summary: false`) |
 
 `gate` is `error` when the gate reports an error and also when no
 `summary.json` exists, which is what an invalid-input exit (code 2) produces.
