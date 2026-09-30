@@ -118,7 +118,7 @@ class DescriptorTests(unittest.TestCase):
     def test_bare_executable_resolves_against_the_hook_path(self):
         bin_dir = self.root / "bin"
         name = "context-fixture-tool" + (".exe" if os.name == "nt" else "")
-        self.write(bin_dir / name, b"tool")
+        self.write(bin_dir / name, b"tool").chmod(0o755)
         with mock.patch.dict(os.environ, {"PATH": str(bin_dir)}):
             entry = self.describe(self.spec("context-fixture-tool"))["hook"]["argv"][0]
         self.assertEqual(entry["status"], "bound")
@@ -237,6 +237,95 @@ class DescriptorTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertNotIn(marker, text)
 
+    def test_inline_code_differing_before_a_slash_changes_the_identity(self):
+        # Only absolute paths are reduced; code, regexes and URLs stay whole.
+        pairs = [
+            ("process.exit(/rm -rf/.test(x)?2:0)", "process.exit(/curl/.test(x)?2:0)"),
+            ("import sys; sys.exit(4/2)", "import sys; sys.exit(0/2)"),
+            ("https://a.example/x", "https://b.example/x"),
+            ("--rules=v1/deny", "--rules=v2/deny"),
+        ]
+        for first, second in pairs:
+            with self.subTest(first=first):
+                self.assertNotEqual(
+                    self.identity(self.spec(sys.executable, "-c", first)),
+                    self.identity(self.spec(sys.executable, "-c", second)),
+                )
+
+    def test_absolute_missing_paths_reduce_on_both_path_flavours(self):
+        for first, second in (
+            ("/one/dir/out.json", "/two/else/out.json"),
+            ("C:\\one\\out.json", "D:\\two\\out.json"),
+        ):
+            with self.subTest(first=first):
+                self.assertEqual(
+                    self.identity(self.spec(sys.executable, "--log", first)),
+                    self.identity(self.spec(sys.executable, "--log", second)),
+                )
+
+    def test_directory_argument_is_declared_unbound_not_hashed_as_a_word(self):
+        rules = self.root / "rules"
+        rules.mkdir()
+        spec = self.spec(sys.executable, str(self.script), str(rules))
+        descriptor = self.describe(spec)
+        entry = descriptor["hook"]["argv"][2]
+        self.assertEqual(
+            entry,
+            {
+                "kind": "directory",
+                "name": "rules",
+                "status": "unbound",
+                "reason": "not-captured",
+            },
+        )
+        self.assertIn("argv-directory:2", descriptor["unbound"])
+        hc.validate_hook_context(hc.context_document(descriptor))
+        # The pinned kind survives the directory vanishing: still declared.
+        rules.rmdir()
+        again = self.describe(spec, argv_kinds=hc.argv_kinds(descriptor))
+        self.assertEqual(again["hook"]["argv"][2], entry)
+
+    def test_template_containing_the_output_is_unbound(self):
+        output = self.template / "runs" / "x"
+        descriptor = self.describe(template=self.template, output=output)
+        self.assertEqual(
+            descriptor["workspace_template"],
+            {"status": "unbound", "reason": "contains-output"},
+        )
+        self.assertIn("workspace-template", descriptor["unbound"])
+        hc.validate_hook_context(hc.context_document(descriptor))
+        # Decisions later written there cannot move the identity.
+        self.write(output / "decisions.jsonl", b'{"effect":"deny"}\n')
+        self.assertEqual(
+            hc.context_id(descriptor),
+            self.identity(template=self.template, output=output),
+        )
+        outside = self.root / "elsewhere"
+        self.assertEqual(
+            self.describe(template=self.template, output=outside)["workspace_template"][
+                "status"
+            ],
+            "bound",
+        )
+
+    @unittest.skipUnless(os.name == "nt", "CreateProcess search rules")
+    def test_bare_name_on_windows_hashes_the_exe_createprocess_runs(self):
+        first, second = self.root / "a", self.root / "b"
+        self.write(first / "context-fixture-hook.cmd", b"never run")
+        self.write(second / "context-fixture-hook.exe", b"the program")
+        path = os.pathsep.join((str(first), str(second)))
+        with mock.patch.dict(os.environ, {"PATH": path}):
+            entry = self.describe(self.spec("context-fixture-hook"))["hook"]["argv"][0]
+        self.assertEqual(entry["size"], len(b"the program"))
+
+    def test_large_directory_stops_listing_at_the_entry_limit(self):
+        crowded = self.root / "crowded"
+        for index in range(20):
+            self.write(crowded / f"f{index:02d}", b"")
+        with mock.patch.object(hc, "MAX_TEMPLATE_ENTRIES", 5):
+            descriptor = self.describe(template=crowded)
+        self.assertEqual(descriptor["workspace_template"]["reason"], "limit-exceeded")
+
 
 class ValidatorTests(unittest.TestCase):
     def setUp(self):
@@ -260,6 +349,11 @@ class ValidatorTests(unittest.TestCase):
             hc.validate_hook_context(document)
         self.assertNotIn("tamper", str(failure.exception))
         return str(failure.exception)
+
+    def test_accepts_any_positive_jobs_the_recorder_accepts(self):
+        descriptor = copy.deepcopy(self.document["descriptor"])
+        descriptor["execution"]["jobs"] = 2**40
+        hc.validate_hook_context(hc.context_document(descriptor))
 
     def test_accepts_the_written_file_form(self):
         hc.validate_hook_context(self.document)

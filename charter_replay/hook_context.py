@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import shutil
 from typing import Any
@@ -43,10 +43,10 @@ STATIC_UNBOUND = (
 )
 _FILE_REASONS = ("unreadable", "limit-exceeded")
 _EXECUTABLE_REASONS = ("unresolved",) + _FILE_REASONS
+_TEMPLATE_REASONS = _FILE_REASONS + ("contains-output",)
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _TOKEN = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 _ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
-_ARGV_FILE_UNBOUND = re.compile(r"argv-file:(0|[1-9][0-9]{0,5})")
 _DOCUMENT_KEYS = {"schema_version", "context_id", "descriptor"}
 _DESCRIPTOR_KEYS = {
     "schema_version",
@@ -89,8 +89,15 @@ def _display_name(text: str) -> str:
     return clean[:_MAX_NAME] or "-"
 
 
+def _path_word(word: str) -> bool:
+    # Only an absolute path is host-specific. Inline code, regexes, URLs and
+    # `--flag=a/b` values also contain slashes and must be hashed in full, or
+    # two different policies could share an identity.
+    return PureWindowsPath(word).is_absolute() or PurePosixPath(word).is_absolute()
+
+
 def _reduced(word: str) -> str:
-    return Path(word).name if os.sep in word or "/" in word else word
+    return Path(word).name if _path_word(word) else word
 
 
 def _bound_file(kind: str, path: Path, name: str) -> dict[str, Any]:
@@ -108,9 +115,13 @@ def _executable(argv0: str) -> dict[str, Any]:
     # Resolve the way the runtime would, against the PATH the hook receives.
     if os.sep in argv0 or "/" in argv0:
         found = argv0 if Path(argv0).is_file() else None
+    elif os.name == "nt" and not Path(argv0).suffix:
+        # CreateProcess appends only `.exe`; `which` would try every PATHEXT
+        # entry and could hash a `.cmd` that never runs.
+        found = shutil.which(argv0 + ".exe", path=os.environ.get("PATH"))
     else:
         found = shutil.which(argv0, path=os.environ.get("PATH"))
-    name = _reduced(argv0)
+    name = Path(argv0).name
     if found is None:
         return {
             "kind": "executable",
@@ -128,16 +139,41 @@ def _is_file(word: str) -> bool:
         return False
 
 
+def _is_dir(word: str) -> bool:
+    try:
+        return Path(word).is_dir()
+    except (OSError, ValueError):
+        return False
+
+
 def _argv_word(word: str, kind: str | None) -> dict[str, Any]:
     # `kind` fixes a position seen earlier, so a file the hook itself creates
     # (an output path) never turns a word into a file on re-observation.
     if kind == "file" or (kind is None and _is_file(word)):
         return _bound_file("file", Path(word), Path(word).name)
+    if kind == "directory" or (kind is None and _is_dir(word)):
+        # A directory argument (rules, config) is not read; declare it rather
+        # than let two different trees pass as one input.
+        return {
+            "kind": "directory",
+            "name": _display_name(Path(word).name),
+            "status": "unbound",
+            "reason": "not-captured",
+        }
     reduced = _reduced(word).encode("utf-8", "surrogatepass")
     return {"kind": "word", "sha256": hashlib.sha256(reduced).hexdigest()}
 
 
-def _template(root: Path) -> dict[str, Any]:
+def _contains(root: Path, output: Path | None) -> bool:
+    if output is None:
+        return False
+    try:
+        return output.resolve().is_relative_to(root.resolve())
+    except (OSError, RuntimeError, ValueError):
+        return True
+
+
+def _template(root: Path, output: Path | None = None) -> dict[str, Any]:
     """Describe the tree `shutil.copytree(root, ...)` would copy (links followed)."""
 
     def unbound(reason: str) -> dict[str, Any]:
@@ -148,6 +184,10 @@ def _template(root: Path) -> dict[str, Any]:
     try:
         if not root.is_dir():
             return unbound("unreadable")
+        # Recordings written inside the template would feed earlier decisions
+        # back into an identity that must depend on inputs only.
+        if _contains(root, output):
+            return unbound("contains-output")
         stack = [("", os.path.realpath(root), frozenset())]
         # Walk and stat first: nothing is read until both limits are known to hold.
         while stack:
@@ -155,12 +195,16 @@ def _template(root: Path) -> dict[str, Any]:
             if real in ancestors:
                 return unbound("unreadable")
             ancestors = ancestors | {real}
+            found = []
             with os.scandir(root / prefix if prefix else root) as scan:
-                found = sorted(scan, key=lambda item: item.name)
+                # Count while listing: a huge directory stops at the limit.
+                for item in scan:
+                    if len(entries) + len(found) >= MAX_TEMPLATE_ENTRIES:
+                        return unbound("limit-exceeded")
+                    found.append(item)
+            found.sort(key=lambda item: item.name)
             for item in found:
                 relative = f"{prefix}/{item.name}" if prefix else item.name
-                if len(entries) >= MAX_TEMPLATE_ENTRIES:
-                    return unbound("limit-exceeded")
                 if item.is_dir():
                     entries.append((relative, "dir", 0))
                     stack.append((relative, os.path.realpath(item.path), ancestors))
@@ -197,11 +241,17 @@ def _template(root: Path) -> dict[str, Any]:
     }
 
 
+def _unbound_name(kind: str, index: int) -> str:
+    if kind == "executable":
+        return "executable"
+    return f"argv-{'directory' if kind == 'directory' else 'file'}:{index}"
+
+
 def _unbound_names(argv: list[dict[str, Any]], template: dict[str, Any] | None):
     names = set(STATIC_UNBOUND)
     for index, item in enumerate(argv):
         if item.get("status") == "unbound":
-            names.add("executable" if index == 0 else f"argv-file:{index}")
+            names.add(_unbound_name(item["kind"], index))
     if template is not None and template["status"] == "unbound":
         names.add("workspace-template")
     return sorted(names)
@@ -219,11 +269,13 @@ def describe_hook_context(
     workspace_template: Path | None,
     jobs: int,
     argv_kinds: list[str] | None = None,
+    output: Path | None = None,
 ) -> dict[str, Any]:
     """Return the input-only descriptor for one hook recording.
 
     Pass the `argv_kinds` of an earlier descriptor to re-observe the same
     inputs: each word keeps its kind, only its bytes are looked at again.
+    `output` is the recording directory; a template containing it is unbound.
     """
 
     adapter = get_adapter(spec.runtime)
@@ -232,7 +284,9 @@ def describe_hook_context(
         raise ValueError("argv kinds do not match the hook argv")
     argv = [_executable(spec.argv[0])]
     argv += [_argv_word(word, kind) for word, kind in zip(spec.argv[1:], kinds[1:])]
-    template = None if workspace_template is None else _template(workspace_template)
+    template = (
+        None if workspace_template is None else _template(workspace_template, output)
+    )
     return {
         "schema_version": HOOK_CONTEXT_VERSION,
         "adapter": {"runtime": spec.runtime, "contract_id": adapter.contract_id},
@@ -313,7 +367,7 @@ def _validate_argv_item(item: Any, index: int) -> bool:
 
     where = f"descriptor.hook.argv[{index}]"
     if not isinstance(item, dict) or item.get("kind") not in (
-        ("executable",) if index == 0 else ("file", "word")
+        ("executable",) if index == 0 else ("file", "word", "directory")
     ):
         raise _fail(f"{where} has an unsupported kind")
     if item["kind"] == "word":
@@ -327,7 +381,12 @@ def _validate_argv_item(item: Any, index: int) -> bool:
         _name(item["name"], f"{where}.name")
         return False
     _mapping(item, {"kind", "name", "status", "reason"}, where)
-    reasons = _EXECUTABLE_REASONS if index == 0 else _FILE_REASONS
+    if item["kind"] == "directory":
+        reasons: tuple[str, ...] = ("not-captured",)
+    elif index == 0:
+        reasons = _EXECUTABLE_REASONS
+    else:
+        reasons = _FILE_REASONS
     if item["status"] != "unbound" or item["reason"] not in reasons:
         raise _fail(f"{where} has an unsupported status or reason")
     _name(item["name"], f"{where}.name")
@@ -348,7 +407,7 @@ def _validate_template(template: Any) -> bool:
         _hex(template["tree_sha256"], "descriptor.workspace_template.tree_sha256")
         return False
     _mapping(template, {"status", "reason"}, "descriptor.workspace_template")
-    if template["status"] != "unbound" or template["reason"] not in _FILE_REASONS:
+    if template["status"] != "unbound" or template["reason"] not in _TEMPLATE_REASONS:
         raise _fail("descriptor.workspace_template has an unsupported status")
     return True
 
@@ -404,7 +463,7 @@ def validate_hook_context(document: Any) -> None:
         raise _fail("descriptor.execution.timeout_seconds is out of range")
     if isinstance(execution["jobs"], bool) or not isinstance(execution["jobs"], int):
         raise _fail("descriptor.execution.jobs must be an integer")
-    if not 1 <= execution["jobs"] <= 2**31:
+    if execution["jobs"] < 1:
         raise _fail("descriptor.execution.jobs is out of range")
     hook = _mapping(descriptor["hook"], {"argv"}, "descriptor.hook")
     argv = hook["argv"]
@@ -413,7 +472,7 @@ def validate_hook_context(document: Any) -> None:
     expected = set(STATIC_UNBOUND)
     for index, item in enumerate(argv):
         if _validate_argv_item(item, index):
-            expected.add("executable" if index == 0 else f"argv-file:{index}")
+            expected.add(_unbound_name(item["kind"], index))
     if _validate_template(descriptor["workspace_template"]):
         expected.add("workspace-template")
     environment = _mapping(

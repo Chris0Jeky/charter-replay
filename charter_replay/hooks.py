@@ -344,7 +344,7 @@ def record_hook(
         raise HookSpecError("hook input fingerprint could not be read") from exc
     try:
         initial_context = hook_context.describe_hook_context(
-            spec, workspace_template=workspace_template, jobs=jobs
+            spec, workspace_template=workspace_template, jobs=jobs, output=output
         )
     except OSError as exc:
         raise HookSpecError("hook context could not be described") from exc
@@ -402,6 +402,7 @@ def record_hook(
             workspace_template=workspace_template,
             jobs=jobs,
             argv_kinds=hook_context.argv_kinds(initial_context),
+            output=output,
         )
         if hook_context.context_id(final_context) != hook_context.context_id(
             initial_context

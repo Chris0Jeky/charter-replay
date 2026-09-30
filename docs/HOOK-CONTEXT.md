@@ -28,21 +28,31 @@ Read and hashed (bytes, not paths):
 - The hook executable's bytes, resolved as the runtime would: a path-shaped
   `argv[0]` as given, a bare name on the `PATH` the hook receives. The name is
   part of the identity, so an alias is a different context.
-  On Windows, `CreateProcess` searches the application and system directories
-  before `PATH`, so a bare name can resolve differently from the bytes hashed.
+  On Windows a bare name without an extension is resolved as `<name>.exe`,
+  since `CreateProcess` appends only `.exe`, but `CreateProcess` also searches
+  the application and system directories before `PATH`, so a bare name can
+  still resolve differently from the bytes hashed. Prefer an absolute path.
 - Each later argv word that is an existing regular file: its basename, size and
   SHA-256.
 - The `--workspace` template tree, as `shutil.copytree` would copy it (links
   followed): entry count, total bytes and one hash over sorted POSIX relative
-  paths, entry kinds, sizes and file hashes. Empty directories count.
+  paths, entry kinds, sizes and file hashes. Empty directories count. A
+  template that contains the recording's own output directory is unbound as
+  `contains-output`: earlier recordings written there would otherwise feed
+  decisions back into an input-only identity.
 
 ## Declared only
 
 Recorded as names or hashes, never as values:
 
-- Other argv words: the SHA-256 of the word after a path-shaped word is reduced
-  to its basename. The raw word is never written, since it may carry a secret or
-  a machine path.
+- Other argv words: the SHA-256 of the whole word, except that an absolute path
+  (POSIX or Windows form) is first reduced to its basename so an output path does
+  not make the identity host-specific. Inline code, regexes, URLs and `--flag=a/b`
+  values are hashed in full. The raw word is never written, since it may carry a
+  secret or a machine path.
+- Directory arguments: recorded as kind `directory`, unbound with reason
+  `not-captured` and listed as `argv-directory:<index>`. Their contents are not
+  read, so two different trees at such a position are not distinguished.
 - Environment: the names passed through to the hook, the two fixed Python
   settings, and the names the adapter sets. The values of passed-through and
   adapter variables are not recorded (the adapter's contain the workspace path).
@@ -52,13 +62,17 @@ Recorded as names or hashes, never as values:
 `unbound` lists what a comparison must not assume is covered:
 `ambient-environment-values`, `executable-dependencies`, `file-permissions`,
 `helper-imports`, `mutable-external-state`, `network` and `time`. It also names
-any component that could not be bound: `executable`, `argv-file:<index>` or
-`workspace-template`, each with a fixed reason (`unresolved`, `unreadable`,
-`limit-exceeded`) on its entry. An unbound component still contributes to the
+any component that could not be bound: `executable`, `argv-file:<index>`,
+`argv-directory:<index>` or `workspace-template`, each with a fixed reason
+(`unresolved`, `unreadable`, `limit-exceeded`, `not-captured`,
+`contains-output`) on its entry. An unbound component still contributes to the
 ID, so unreadable inputs never look equal to readable ones.
 
-Reads are bounded before any content is read: 256 MiB per file, 256 MiB and
-10,000 entries per template. A link cycle or a broken link in the template is
+Descriptor reads are bounded before any content is read: 256 MiB per file,
+256 MiB and 10,000 entries per template, counted while directories are listed.
+The legacy fingerprint behind `policy_commit` (see
+[hook input observations](HOOK-INPUT-OBSERVATIONS.md)) still reads argv files
+whole and is not bounded by these limits. A link cycle or a broken link in the template is
 unbound as unreadable.
 
 ## Observation, not snapshot
