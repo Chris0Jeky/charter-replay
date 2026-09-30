@@ -263,6 +263,13 @@ class DescriptorTests(unittest.TestCase):
                     self.identity(self.spec(sys.executable, "--log", second)),
                 )
 
+    def test_absolute_paths_reduce_by_their_own_flavour_on_any_host(self):
+        # Pure-path logic, so a Windows host exercises the POSIX case and back.
+        self.assertEqual(hc._reduced("C:\\one\\out.json"), "out.json")
+        self.assertEqual(hc._reduced("\\\\server\\share\\dir\\out.json"), "out.json")
+        self.assertEqual(hc._reduced("/one/dir/out.json"), "out.json")
+        self.assertEqual(hc._reduced("rules/v1/deny"), "rules/v1/deny")
+
     def test_directory_argument_is_declared_unbound_not_hashed_as_a_word(self):
         rules = self.root / "rules"
         rules.mkdir()
