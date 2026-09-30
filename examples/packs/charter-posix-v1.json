@@ -1,0 +1,18 @@
+{
+  "counts": {
+    "derived": 54,
+    "seeds": 50,
+    "skipped": 96
+  },
+  "domain": "posix-external.v1",
+  "files": {
+    "cases.jsonl": "fa95279fc979334e6da6842313084665ced389ec8c800ca274610dce9b087b28",
+    "corpus-manifest.json": "b1d9d64b3d532d4a1bbcb3a7ef575a83bef0b305ab846a8d52797081127447f1",
+    "events.jsonl": "659223fc79ee702a9b58f55afc609e411938db8e8fcfc18c9ae23c2b85be0b07",
+    "lineage.json": "9272d57957e8277c2c202dbcdea593d5db81c25975795c8039ce29baeed51ee8"
+  },
+  "generator": "posix-shapes.v1",
+  "output_manifest_sha256": "b1d9d64b3d532d4a1bbcb3a7ef575a83bef0b305ab846a8d52797081127447f1",
+  "schema_version": "variant-pack-recipe.v1",
+  "source_manifest_sha256": "ce500fe221ba4d49b107ad83895c97fadebf19a6998916b75ff02bf9a49ef9e2"
+}

@@ -61,6 +61,7 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("replay", help="compare two decision sources (kernel)")
     sub.add_parser("validate", help="validate a corpus (kernel)")
+    sub.add_parser("variants", help="generate or verify bounded variant corpora")
 
     record = sub.add_parser("record", help="record one hook's decisions")
     record.add_argument("--hook", required=True, help="hook command (words or JSON)")
@@ -291,6 +292,10 @@ def _run_import(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "variants":
+        from charter_replay.variants_cli import main as variants_main
+
+        return variants_main(argv[1:])
     if argv and argv[0] in ("replay", "validate"):
         return kernel.main(argv)
     args = _parser().parse_args(argv)
