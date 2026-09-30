@@ -131,6 +131,61 @@ class WorkspaceTests(unittest.TestCase):
                 hooks.run_hook(self.spec, payload, workspace=workspace)
             launch.assert_not_called()
 
+    def test_failed_copy_with_failed_cleanup_is_reported_not_lost(self):
+        template = self.root / "template"
+        template.mkdir()
+        with mock.patch.object(
+            hooks.shutil, "copytree", side_effect=OSError("synthetic copy failure")
+        ), mock.patch.object(
+            hooks,
+            "_cleanup_snapshot_root",
+            return_value=SourceFailure("synthetic", "forced cleanup failure"),
+        ):
+            summary, records = self.record(
+                [_event("copy-clean", "allow")], template=template
+            )
+        self.assertEqual(records[0]["effect"], "indeterminate")
+        self.assertEqual(
+            [failure["code"] for failure in summary["failures"]],
+            ["hook-start-failed", "hook-workspace-cleanup-failed"],
+        )
+        self.assertEqual(summary["failures"][1]["event_id"], "copy-clean")
+        self.assertEqual(summary["outcomes"]["start-failed"], 1)
+
+    def test_failed_copy_with_clean_cleanup_reports_only_start_failed(self):
+        template = self.root / "template"
+        template.mkdir()
+        with mock.patch.object(
+            hooks.shutil, "copytree", side_effect=OSError("synthetic copy failure")
+        ):
+            summary, _records = self.record(
+                [_event("copy-only", "allow")], template=template
+            )
+        self.assertEqual(
+            [failure["code"] for failure in summary["failures"]],
+            ["hook-start-failed"],
+        )
+
+    def test_out_of_workspace_cwd_is_recorded_as_start_failed_for_that_event(self):
+        real_run_hook = hooks.run_hook
+
+        def reject_first(spec, payload, *, workspace):
+            if payload["tool_input"]["command"] == "reject":
+                raise hooks.HookSpecError("hook cwd must stay inside its workspace")
+            return real_run_hook(spec, payload, workspace=workspace)
+
+        events = [_event("cwd-0", "reject"), _event("cwd-1", "allow")]
+        with mock.patch.object(hooks, "run_hook", side_effect=reject_first):
+            summary, records = self.record(events)
+        self.assertEqual(
+            [row["effect"] for row in records], ["indeterminate", "allow"]
+        )
+        self.assertEqual(summary["outcomes"]["start-failed"], 1)
+        self.assertEqual(summary["outcomes"]["allow"], 1)
+        outcomes = (self.root / "output-1" / "outcomes.jsonl").read_text("utf-8")
+        self.assertIn('"outcome":"start-failed"', outcomes)
+        self.assertIn("outside its workspace", records[0]["reason"])
+
     def test_preparation_failure_becomes_a_recorded_source_failure(self):
         with mock.patch.object(
             hooks, "prepare_workspace", side_effect=OSError("synthetic failure")
