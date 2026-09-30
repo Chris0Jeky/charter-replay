@@ -89,15 +89,16 @@ def _display_name(text: str) -> str:
     return clean[:_MAX_NAME] or "-"
 
 
-def _path_word(word: str) -> bool:
+def _reduced(word: str) -> str:
     # Only an absolute path is host-specific. Inline code, regexes, URLs and
     # `--flag=a/b` values also contain slashes and must be hashed in full, or
-    # two different policies could share an identity.
-    return PureWindowsPath(word).is_absolute() or PurePosixPath(word).is_absolute()
-
-
-def _reduced(word: str) -> str:
-    return Path(word).name if _path_word(word) else word
+    # two different policies could share an identity. The basename follows the
+    # path's own flavour: a POSIX host does not split `C:\one\out.json`.
+    if PureWindowsPath(word).is_absolute():
+        return PureWindowsPath(word).name
+    if PurePosixPath(word).is_absolute():
+        return PurePosixPath(word).name
+    return word
 
 
 def _bound_file(kind: str, path: Path, name: str) -> dict[str, Any]:
