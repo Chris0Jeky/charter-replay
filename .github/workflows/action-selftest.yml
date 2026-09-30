@@ -1,0 +1,101 @@
+name: Action self-test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    name: uses ./ (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Replay the toy regression
+        id: regression
+        uses: ./
+        continue-on-error: true
+        with:
+          baseline: python examples/toy-guard/guard_v1.py
+          candidate: python examples/toy-guard/guard_v2.py
+          corpus: charter_replay/corpora/charter
+          output: ${{ runner.temp }}/action-regression
+      - name: Assert the regression step failed with the regression gate
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.regression.outcome }}
+          EXIT_CODE: ${{ steps.regression.outputs.exit-code }}
+          GATE: ${{ steps.regression.outputs.gate }}
+          OUT: ${{ steps.regression.outputs.output-dir }}
+        run: |
+          test "$OUTCOME" = failure
+          test "$EXIT_CODE" = 1
+          test "$GATE" = regression
+          test -n "$OUT"
+          grep -q 'newly-allowed' "$OUT/summary.md"
+          grep -q '| newly-allowed | 4 |' "$OUT/summary.md"
+          grep -q '"newly-allowed": 4' "$OUT/summary.json"
+
+      - name: Replay identical hooks
+        id: identical
+        uses: ./
+        with:
+          baseline: python examples/toy-guard/guard_v1.py
+          candidate: python examples/toy-guard/guard_v1.py
+      - name: Assert the identical run passed
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.identical.outcome }}
+          EXIT_CODE: ${{ steps.identical.outputs.exit-code }}
+          GATE: ${{ steps.identical.outputs.gate }}
+          OUT: ${{ steps.identical.outputs.output-dir }}
+        run: |
+          test "$OUTCOME" = success
+          test "$EXIT_CODE" = 0
+          test "$GATE" = pass
+          test -f "$OUT/summary.json"
+
+      - name: Pass command substitution and backticks as a baseline
+        id: injected-baseline
+        uses: ./
+        continue-on-error: true
+        with:
+          baseline: 'python examples/toy-guard/guard_v1.py $(touch injected-marker) `touch injected-marker2`'
+          candidate: python examples/toy-guard/guard_v2.py
+      - name: Pass command substitution as fail-on
+        id: injected-fail-on
+        uses: ./
+        continue-on-error: true
+        with:
+          baseline: python examples/toy-guard/guard_v1.py
+          candidate: python examples/toy-guard/guard_v1.py
+          fail-on: 'newly-allowed$(touch injected-marker3)'
+      - name: Assert the inputs reached the CLI as data
+        shell: bash
+        env:
+          BASELINE_CODE: ${{ steps.injected-baseline.outputs.exit-code }}
+          FAIL_ON_CODE: ${{ steps.injected-fail-on.outputs.exit-code }}
+          FAIL_ON_GATE: ${{ steps.injected-fail-on.outputs.gate }}
+        run: |
+          # The action ran both times (an exit code exists) ...
+          test -n "$BASELINE_CODE"
+          # ... the CLI rejected the malformed fail-on as invalid input ...
+          test "$FAIL_ON_CODE" = 2
+          test "$FAIL_ON_GATE" = error
+          # ... and no substitution executed anywhere it could have written.
+          found="$(find "$GITHUB_WORKSPACE" "$RUNNER_TEMP" -name 'injected-marker*' -print)"
+          if [ -n "$found" ]; then
+            echo "::error::marker file created: $found"
+            exit 1
+          fi
