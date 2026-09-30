@@ -192,6 +192,31 @@ def _run_record(args: argparse.Namespace) -> int:
     return kernel.EXIT_OK
 
 
+def _emit(text: str) -> None:
+    """Print Markdown once the result is already on disk and the exit code is known.
+
+    UTF-8 bytes go to the binary layer when there is one, so a legacy code page
+    (a Windows cp1252 pipe) cannot fail on a non-ASCII event id. Without one,
+    unencodable characters are replaced. A remaining failure, such as a closed
+    pipe, is dropped: the files are written and the exit code must not change.
+    """
+
+    data = text + "\n"
+    try:
+        stream = sys.stdout
+        binary = getattr(stream, "buffer", None)
+        if binary is not None:
+            stream.flush()  # keep earlier text-layer output ahead of these bytes
+            binary.write(data.encode("utf-8", "replace"))
+            binary.flush()
+        else:
+            encoding = getattr(stream, "encoding", None) or "utf-8"
+            stream.write(data.encode(encoding, "replace").decode(encoding))
+            stream.flush()
+    except (AttributeError, LookupError, OSError, ValueError):
+        pass
+
+
 def _run_repeat(args: argparse.Namespace) -> int:
     # Admit the corpus and the hook before anything runs; run_repeat then checks
     # the output path, still before the first hook starts.
@@ -207,7 +232,7 @@ def _run_repeat(args: argparse.Namespace) -> int:
         jobs=args.jobs,
         fail_on=args.fail_on,
     )
-    print(render_markdown(document))
+    _emit(render_markdown(document))
     return code
 
 
@@ -427,7 +452,7 @@ def _run_hooks(args: argparse.Namespace) -> int:
     )
     markdown = render_summary(summary, outcomes)
     (output / SUMMARY_MD).write_text(markdown, encoding="utf-8", newline="\n")
-    print(markdown)
+    _emit(markdown)
     return code
 
 

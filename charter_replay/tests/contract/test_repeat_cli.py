@@ -57,12 +57,12 @@ class RepeatCliTests(unittest.TestCase):
         self.output = self.parent / "repeat"
         self.corpus = self.build_corpus(3)
 
-    def build_corpus(self, count):
-        corpus = self.root / "corpus"
+    def build_corpus(self, count, *, prefix="synthetic-", name="corpus"):
+        corpus = self.root / name
         corpus.mkdir()
         events, cases = [], []
         for number in range(count):
-            event_id = f"synthetic-{number}"
+            event_id = f"{prefix}{number}"
             events.append(
                 dict(
                     schema_version="command-event.v1",
@@ -181,6 +181,28 @@ class RepeatCliTests(unittest.TestCase):
                 {(v["effect"], v["outcome"]) for v in row["variants"]},
                 {("allow", "allow"), ("deny", "deny")},
             )
+
+    def test_a_legacy_code_page_stdout_does_not_change_the_exit_code(self):
+        # A cp1252 pipe cannot encode these letters; the summary is printed only
+        # after the output is published, so printing must not turn 1 into 2.
+        # Three events, so the hook's counter parity flips for each of them.
+        self.corpus = self.build_corpus(
+            3, prefix="événement-日本-", name="unicode-corpus"
+        )
+        raw = io.BytesIO()
+        legacy = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+        command = json.dumps([sys.executable, str(self.hook("effect"))])
+        argv = ["repeat", "--hook", command, "--corpus", str(self.corpus)]
+        argv += ["--output", str(self.output), "--jobs", "1", "--repeats", "2"]
+        with (
+            mock.patch.object(sys, "stdout", legacy),
+            redirect_stderr(io.StringIO()) as stderr,
+        ):
+            code = app.main(argv)
+        self.assertEqual(code, 1, stderr.getvalue())
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertTrue((self.output / "stability.md").is_file())
+        self.assertIn("日本".encode("utf-8"), raw.getvalue())
 
     def test_counter_alternation_keeps_the_context_unchanged(self):
         self.run_repeat(self.hook("effect"), "--repeats", "3")
