@@ -5,7 +5,8 @@
 - **Migration: `--runtime codex` changed.** It now selects the new
   `codex-pretooluse.v1` contract, built from the current Codex hooks documentation.
   Replies Codex documents as unsupported (`ask`, legacy `approve`, `continue:
-  false`, `stopReason`, `suppressOutput`), malformed or duplicate-key replies,
+  false`, `stopReason`, `suppressOutput`), malformed, duplicate-key or
+  BOM-prefixed replies,
   `permissionDecision: allow` (with or without `updatedInput`) and exit 2 without a
   reason are `invalid-output` (indeterminate), and no `CLAUDE_PROJECT_DIR` is set.
   Under the old floor `ask` was a deny and `allow`/`approve` were allows; a hook
@@ -15,6 +16,8 @@
   from a pre-change recording even though the decisions reproduce; old decision
   files replay unchanged. The contract is a documentation-derived model, not a
   certification. See `docs/RUNTIME_CONTRACTS.md`.
+- Every runtime classifies JSON nested past the parser's recursion limit as
+  `invalid-output` instead of aborting the whole recording.
 - A least-privilege composite GitHub Action (`action.yml`) runs `charter-replay hooks`
   in the caller's job: inputs reach the CLI through `env:` only, outputs are
   `exit-code`, `gate` and `output-dir`, the job summary is bounded, and it needs no

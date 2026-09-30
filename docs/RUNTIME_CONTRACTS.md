@@ -98,6 +98,7 @@ Reply mapping (`codex`):
 | `allow` without `updatedInput`; `updatedInput` without `allow` | invalid-output | indeterminate |
 | deny/block without a reason; reason without decision | invalid-output | indeterminate |
 | malformed or unknown-field JSON; non-object JSON; other `hookEventName` | invalid-output | indeterminate |
+| duplicate member names; stdout starting with a byte-order mark; JSON nested past the parser limit | invalid-output | indeterminate |
 | both modern and legacy decision fields in one reply | invalid-output | indeterminate |
 
 Ambiguities resolved toward indeterminate (never toward allow or deny):
@@ -112,6 +113,10 @@ Ambiguities resolved toward indeterminate (never toward allow or deny):
   `decision`/`reason`: the docs do not say which wins. Treated as invalid.
 - A JSON scalar or array on stdout: plain text is documented as ignored, but a
   JSON non-object is not addressed. Treated as invalid rather than as allow.
+- Duplicate member names: Python keeps the last one, while a strict parser
+  rejects the reply. Treated as invalid so neither order scores a decision.
+- A byte-order mark before the reply (PowerShell's default encoding) is not
+  addressed by the docs. Treated as invalid rather than as ignored plain text.
 - Hooks configured as asynchronous cannot apply control effects; the replay
   models synchronous command hooks only.
 - The tool identity for shell calls is documented as `Bash`; other shell aliases
