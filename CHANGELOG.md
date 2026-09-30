@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A least-privilege composite GitHub Action (`action.yml`) runs `charter-replay hooks`
+  in the caller's job: inputs reach the CLI through `env:` only, outputs are
+  `exit-code`, `gate` and `output-dir`, the job summary is bounded, and it needs no
+  token permissions and uploads nothing. A self-test workflow exercises it with
+  `uses: ./` on Linux, Windows and macOS. See `docs/ACTION.md`.
 - `record` and `hooks` write `hook-context.json`: a versioned (`hook-context.v1`),
   input-only descriptor and SHA-256 context ID covering adapter, ask mapping,
   timeout and jobs, hook executable and argv file bytes, the workspace template
