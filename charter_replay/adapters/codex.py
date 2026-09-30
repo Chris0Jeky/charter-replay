@@ -39,6 +39,20 @@ _SPECIFIC_KEYS = frozenset(
 _INVALID = "invalid-output"
 
 
+class _DuplicateKey(ValueError):
+    """A reply repeated a member name; a strict parser would reject it."""
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    # Python keeps the last duplicate; Codex's strict parser fails the hook.
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise _DuplicateKey(key)
+        value[key] = item
+    return value
+
+
 def _invalid(detail: str) -> tuple[str, str]:
     return _INVALID, detail
 
@@ -170,8 +184,15 @@ class CodexAdapter:
         body = stdout.strip()
         if not body:
             return "allow", "exit 0, no output"
+        if body[0] == "\ufeff":
+            # Undocumented; a PowerShell hook's BOM-prefixed JSON is ambiguous.
+            return _invalid("stdout starts with a byte-order mark")
         try:
-            value = json.loads(body)
+            value = json.loads(body, object_pairs_hook=_unique_object)
+        except _DuplicateKey:
+            return _invalid("JSON reply repeats a member name")
+        except RecursionError:
+            return _invalid("JSON reply is nested too deeply")
         except ValueError:
             if body[0] in "{[":
                 return _invalid("stdout looks like JSON but is malformed")

@@ -25,7 +25,9 @@ Two contracts, selected by `--runtime`:
   binary. Pin a Codex revision and run its hooks before claiming fidelity.
 - `codex-legacy` is `codex-legacy-floor.v1`, the v0.1 recorder behaviour: the
   Claude grammar with `ask` mapped to deny and the Claude environment. It is kept
-  byte for byte so old recordings can be reproduced. It is not fail-safe: Codex
+  byte for byte so old recordings' decisions can be reproduced (the new
+  recording's context id differs, since it names runtime `codex-legacy`). It is
+  not fail-safe: Codex
   does not deny on `ask`, it fails the hook and lets the call continue. The
   context id in `hook-context.json` tells the two apart. Old recorded decision
   files replay unchanged, because replay compares recorded effects only.

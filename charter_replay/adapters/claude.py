@@ -73,6 +73,9 @@ class ClaudeAdapter:
             value = json.loads(body)
         except ValueError:
             return "invalid-output", "exit 0 with stdout that is not JSON"
+        except RecursionError:
+            # Adversarial nesting must not abort the whole recording.
+            return "invalid-output", "exit 0 with JSON nested too deeply"
         result = _json_decision(value)
         if result is None:
             return "invalid-output", "JSON reply without a recognised decision"

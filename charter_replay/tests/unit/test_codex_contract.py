@@ -261,6 +261,28 @@ UNSUPPORTED = (
         specific(permissionDecision="deny", permissionDecisionReason="r"),
         "exit 2 without a blocking reason on stderr",
     ),
+    # Python keeps the last duplicate either way; a strict parser fails the hook.
+    (
+        "duplicate key ending in block",
+        0,
+        '{"decision": null, "decision": "block", "reason": "r"}',
+        "JSON reply repeats a member name",
+    ),
+    (
+        "duplicate key ending in null",
+        0,
+        '{"decision": "block", "reason": "r", "decision": null}',
+        "JSON reply repeats a member name",
+    ),
+    (
+        "byte-order mark",
+        0,
+        '\ufeff{"decision": "block", "reason": "x"}',
+        "stdout starts with a byte-order mark",
+    ),
+    ("deep nesting", 0, "[" * 100_000, "JSON reply is nested too deeply"),
+    ("JSON null", 0, "null", "JSON reply is not an object"),
+    ("whitespace then malformed", 0, ' \n{"decision": ', "stdout looks like JSON but"),
 )
 
 

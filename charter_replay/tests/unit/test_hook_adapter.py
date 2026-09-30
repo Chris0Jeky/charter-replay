@@ -269,5 +269,15 @@ class ProcessTests(unittest.TestCase):
         )
 
 
+class NestingTests(unittest.TestCase):
+    def test_deeply_nested_json_is_invalid_output_not_a_crash(self):
+        from charter_replay.adapters import get_adapter
+
+        for runtime in ("claude", "codex-legacy", "codex"):
+            with self.subTest(runtime):
+                outcome, _ = get_adapter(runtime).classify(0, "[" * 100_000, "")
+                self.assertEqual(outcome, "invalid-output")
+
+
 if __name__ == "__main__":
     unittest.main()
