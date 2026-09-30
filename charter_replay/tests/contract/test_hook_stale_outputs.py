@@ -6,6 +6,7 @@ from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 from pathlib import Path
+import stat
 import sys
 import unittest
 from unittest import mock
@@ -94,13 +95,18 @@ class StaleOutputTests(unittest.TestCase):
             directory, corpus, _, _ = data
             output = directory / "out"
             seeded = _seed(output)
-            argv = _argv(corpus, output)
-            argv[argv.index("--baseline") + 1] = json.dumps(
-                [sys.executable, "missing-hook-xyz.py"]
-            )
-            code, _stderr = _invoke(argv)
-            self.assertEqual(code, 2)
-            self.assertTrue(all(path.read_bytes() == STALE_MARK for path in seeded))
+            # Either side invalid: removal must wait until both are admitted.
+            for side in ("--baseline", "--candidate"):
+                with self.subTest(side=side):
+                    argv = _argv(corpus, output)
+                    argv[argv.index(side) + 1] = json.dumps(
+                        [sys.executable, "missing-hook-xyz.py"]
+                    )
+                    code, _stderr = _invoke(argv)
+                    self.assertEqual(code, 2)
+                    self.assertTrue(
+                        all(path.read_bytes() == STALE_MARK for path in seeded)
+                    )
 
     def test_linked_report_directory_is_refused_and_nothing_is_removed(self):
         with fixtures.CliTests().fixture("same") as data:
@@ -170,6 +176,36 @@ class ExitThreeDiagnosticTests(unittest.TestCase):
             self.assertEqual(code, 3)
             self.assertIn("gate error", stderr)
             self.assertNotIn("output failed", stderr)
+
+
+class LinkDetectionTests(unittest.TestCase):
+    """Only redirecting reparse points count as links (OneDrive placeholders don't)."""
+
+    REPARSE = 0x400  # FILE_ATTRIBUTE_REPARSE_POINT
+
+    def metadata(self, tag):
+        return mock.Mock(
+            st_mode=stat.S_IFDIR | 0o755,
+            st_file_attributes=self.REPARSE,
+            st_reparse_tag=tag,
+        )
+
+    def is_link(self, tag):
+        path = mock.Mock(spec=Path)
+        path.lstat.return_value = self.metadata(tag)
+        with (
+            mock.patch.object(stat, "FILE_ATTRIBUTE_REPARSE_POINT", self.REPARSE),
+            mock.patch.object(app, "_LINK_REPARSE_TAGS", frozenset({1, 2})),
+        ):
+            return app._is_link(path)
+
+    def test_symlink_and_junction_tags_are_links(self):
+        self.assertTrue(self.is_link(1))
+        self.assertTrue(self.is_link(2))
+
+    def test_other_reparse_tags_are_not_links(self):
+        # IO_REPARSE_TAG_CLOUD_6 marks a OneDrive placeholder directory.
+        self.assertFalse(self.is_link(0x9000601A))
 
 
 if __name__ == "__main__":

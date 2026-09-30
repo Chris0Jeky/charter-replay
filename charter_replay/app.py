@@ -33,6 +33,7 @@ RECORDING_FILES = (
     "decisions.jsonl.manifest.json",
     "outcomes.jsonl",
     "measurements.json",
+    "hook-context.json",
 )
 
 
@@ -241,11 +242,24 @@ def render_summary(summary: dict[str, Any], outcomes: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# Symbolic links and junctions redirect; other reparse points (OneDrive
+# cloud placeholders, dedup) are ordinary directories for this purpose.
+_LINK_REPARSE_TAGS = frozenset(
+    getattr(stat, name)
+    for name in ("IO_REPARSE_TAG_SYMLINK", "IO_REPARSE_TAG_MOUNT_POINT")
+    if hasattr(stat, name)
+)
+
+
 def _is_link(path: Path) -> bool:
     metadata = path.lstat()
-    return stat.S_ISLNK(metadata.st_mode) or bool(
-        getattr(metadata, "st_file_attributes", 0)
-        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    if stat.S_ISLNK(metadata.st_mode):
+        return True
+    reparse = getattr(metadata, "st_file_attributes", 0) & getattr(
+        stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0
+    )
+    return bool(reparse) and getattr(metadata, "st_reparse_tag", 0) in (
+        _LINK_REPARSE_TAGS
     )
 
 
