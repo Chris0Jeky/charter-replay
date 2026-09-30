@@ -5,7 +5,9 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
+import shutil
 import stat
 import sys
 import unittest
@@ -14,6 +16,7 @@ from unittest import mock
 from charter_replay import app
 from charter_replay.review_reports import REPORT_FILES
 from charter_replay.tests.contract import test_cli as fixtures
+from charter_replay.tests.links import link_directory
 
 STALE_MARK = b"stale from an earlier run\n"
 
@@ -126,6 +129,85 @@ class StaleOutputTests(unittest.TestCase):
             self.assertIn("is a link", stderr)
             self.assertEqual((elsewhere / "report.json").read_bytes(), STALE_MARK)
             self.assertEqual((output / "summary.json").read_bytes(), STALE_MARK)
+
+    @unittest.skipUnless(os.name == "nt", "NTFS junctions")
+    def test_linked_report_junction_is_refused_and_nothing_is_removed(self):
+        with fixtures.CliTests().fixture("same") as data:
+            directory, corpus, _, _ = data
+            output = directory / "out"
+            elsewhere = directory / "elsewhere"
+            elsewhere.mkdir()
+            (elsewhere / "report.json").write_bytes(STALE_MARK)
+            output.mkdir()
+            (output / "summary.json").write_bytes(STALE_MARK)
+            link_directory(self, output / "report", elsewhere, junction=True)
+            code, stderr = _invoke(_argv(corpus, output))
+            self.assertEqual(code, 2)
+            self.assertIn("is a link", stderr)
+            self.assertEqual((elsewhere / "report.json").read_bytes(), STALE_MARK)
+            self.assertEqual((output / "summary.json").read_bytes(), STALE_MARK)
+
+    def test_a_locked_file_does_not_stop_the_other_removals(self):
+        with fixtures.CliTests().fixture("same") as data:
+            directory, corpus, _, _ = data
+            output = directory / "out"
+            seeded = _seed(output)
+            locked = output / "summary.json"
+            real_unlink = Path.unlink
+
+            def unlink(path, *args, **kwargs):
+                if path == locked:
+                    raise PermissionError("locked by another process")
+                return real_unlink(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "unlink", unlink):
+                code, stderr = _invoke(_argv(corpus, output))
+            self.assertEqual(code, 3)
+            self.assertIn("output failed: 1 stale output file(s)", stderr)
+            self.assertNotIn(str(directory), stderr)
+            self.assertNotIn("locked", stderr)
+            # Every other stale file went, and no recording was started.
+            self.assertEqual([path for path in seeded if path.exists()], [locked])
+
+    def test_every_failed_removal_is_counted_once_in_one_error(self):
+        with fixtures.CliTests().fixture("same") as data:
+            directory, corpus, _, _ = data
+            output = directory / "out"
+            seeded = _seed(output)
+            with mock.patch.object(Path, "unlink", side_effect=PermissionError):
+                code, stderr = _invoke(_argv(corpus, output))
+            self.assertEqual(code, 3)
+            self.assertIn(f"output failed: {len(seeded)} stale", stderr)
+            self.assertEqual(stderr.count("output failed"), 1)
+            self.assertTrue(all(path.exists() for path in seeded))
+
+    def test_a_subdirectory_swapped_for_a_link_after_the_check_is_not_followed(self):
+        with fixtures.CliTests().fixture("same") as data:
+            directory, corpus, _, _ = data
+            output = directory / "out"
+            seeded = _seed(output)
+            elsewhere = directory / "elsewhere"
+            elsewhere.mkdir()
+            (elsewhere / "report.json").write_bytes(STALE_MARK)
+            real = app._unlink_stale
+            swaps = []
+
+            def swapped_after_the_check(target, root):
+                # `_derived_artifacts` already saw a plain directory here.
+                if target.parent.name == "report" and not swaps:
+                    swaps.append(target)
+                    shutil.rmtree(root / "report")
+                    link_directory(self, root / "report", elsewhere)
+                return real(target, root)
+
+            with mock.patch.object(app, "_unlink_stale", swapped_after_the_check):
+                code, stderr = _invoke(_argv(corpus, output))
+            self.assertEqual(code, 3)
+            self.assertIn(f"output failed: {len(REPORT_FILES)} stale", stderr)
+            self.assertEqual((elsewhere / "report.json").read_bytes(), STALE_MARK)
+            for path in seeded:
+                if path.parent.name != "report":
+                    self.assertFalse(path.exists(), path.name)
 
     def test_non_regular_entry_on_a_derived_name_is_refused_before_any_removal(self):
         with fixtures.CliTests().fixture("same") as data:

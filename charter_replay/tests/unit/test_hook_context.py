@@ -15,22 +15,7 @@ from unittest import mock
 from charter_replay import hook_context as hc
 from charter_replay.adapters import RUNTIMES, get_adapter
 from charter_replay.hooks import HookSpec
-
-
-def link_directory(case: unittest.TestCase, link: Path, target: Path) -> None:
-    """Make `link` lead to `target`: a symlink, or a junction on Windows."""
-
-    try:
-        link.symlink_to(target, target_is_directory=True)
-        return
-    except (OSError, NotImplementedError):
-        pass
-    if os.name == "nt":
-        import _winapi
-
-        _winapi.CreateJunction(str(target), str(link))
-        return
-    case.skipTest("directory links are unavailable")
+from charter_replay.tests.links import link_directory
 
 
 class DescriptorTests(unittest.TestCase):

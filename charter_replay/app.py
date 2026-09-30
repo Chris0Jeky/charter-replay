@@ -21,6 +21,7 @@ from charter_replay.hook_context import HOOK_CONTEXT_VERSION
 from charter_replay.hooks import ASK_EFFECTS, RUNTIMES, HookSpec, HookSpecError
 from charter_replay.hooks import parse_hook_command, record_hook
 from charter_replay.policy_sources import SourceFailure
+from charter_replay.publication import PublicationError
 from charter_replay.metrics import render_label_summary, score_labels
 from charter_replay.repeat import DEFAULT_FAIL_ON, MAX_REPEATS, MIN_REPEATS
 from charter_replay.repeat import RepeatInputError, parse_fail_on, parse_repeats
@@ -382,8 +383,37 @@ def _remove_stale_outputs(output: Path) -> None:
                 f"output entry {target.name!r} is not a regular file"
             )
         existing.append(target)
+    # A failure on one file must not stop the others: leaving fewer stale files
+    # is always safer than leaving more, so try them all and report once.
+    failed = 0
     for target in existing:
-        target.unlink(missing_ok=True)
+        try:
+            _unlink_stale(target, output)
+        except OSError:
+            failed += 1
+    if failed:
+        raise PublicationError(
+            f"output failed: {failed} stale output file(s) could not be removed"
+        )
+
+
+def _unlink_stale(target: Path, output: Path) -> None:
+    """Unlink one derived file, first re-checking that its parent is still plain.
+
+    `_derived_artifacts` looked at the subdirectories earlier; a concurrent
+    writer could have swapped one for a link since. The look is repeated
+    immediately before the unlink, which narrows the window but cannot close it
+    (this is not a hostile-filesystem boundary).
+    """
+
+    parent = target.parent
+    if parent == output:
+        plain = parent.is_dir()  # the directory the user named; a link is theirs
+    else:
+        plain = stat.S_ISDIR(parent.lstat().st_mode) and not _is_link(parent)
+    if not plain:
+        raise OSError("output subdirectory is no longer a plain directory")
+    target.unlink(missing_ok=True)
 
 
 def _run_hooks(args: argparse.Namespace) -> int:
@@ -482,6 +512,9 @@ def main(argv: list[str] | None = None) -> int:
     except (HookSpecError, kernel.ReplayInputError, ValueError) as exc:
         print(f"{PROG}: {exc}", file=sys.stderr)
         return kernel.EXIT_INPUT_INVALID
+    except PublicationError as exc:
+        print(f"{PROG}: {exc}", file=sys.stderr)
+        return kernel.EXIT_SOURCE_FAILED
     except OSError as exc:
         print(f"{PROG}: output failed ({exc.__class__.__name__})", file=sys.stderr)
         return kernel.EXIT_SOURCE_FAILED
