@@ -30,6 +30,13 @@ removed on failure. A hard kill can leave it behind; it is safe to delete. The
 output parent must already exist and be on one filesystem with the staging
 directory (it is created inside it).
 
+On Windows a sync client or antivirus scanner can briefly hold a handle inside
+the staging directory and make the final rename fail. The rename is retried a
+few times on `PermissionError`. If it still fails, the staging directory is
+kept, not deleted, and the run exits 3 with a fixed message saying the
+recordings were kept in a hidden `.charter-repeat-*` directory beside
+`--output` (no path is printed). Rename it once the handle is released.
+
 ## Comparability
 
 Every repeat's `hook-context.v1` ID must equal repeat 1's (see
