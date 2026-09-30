@@ -34,9 +34,13 @@ Testing while sitting in a source checkout can import local modules even after
 installing a wheel. This lane builds the wheel, creates a fresh environment outside
 the checkout, and installs the produced wheel with `--no-index --no-deps`. It then
 runs `examples/check_installed_review.py` with Python isolated mode from outside
-the repository, deliberately setting PYTHONPATH to the checkout as a negative
-control. The helper rejects a package outside that environment, a package inside
-the checkout, a missing packaged corpus or a non-isolated interpreter.
+the repository, with PYTHONPATH set to the checkout. Under `python -I` that
+variable is ignored, so this setting does not test isolation by itself: it would
+only act as a negative control if `-I` were dropped, when the checkout would
+shadow the wheel and the helper's location checks would fail. Isolation rests on
+`-I`, the environment outside the checkout and those checks. The helper rejects
+a package outside that environment, a package inside the checkout, a missing
+packaged corpus or a non-isolated interpreter.
 
 The installed package generates the 104-event pack from its packaged 50-case
 charter, checks the repository recipe, invokes the two fixed toy hook programs,

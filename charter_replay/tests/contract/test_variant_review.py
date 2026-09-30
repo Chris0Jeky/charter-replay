@@ -7,6 +7,7 @@ import importlib
 import io
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 from unittest import mock
@@ -17,6 +18,7 @@ from charter_replay.manifests import build_corpus_manifest, build_run_manifest
 from charter_replay.manifests import manifest_json_bytes
 from charter_replay.policy_sources import SourceFailure
 from charter_replay.reports import build_json_report, report_json_bytes
+from charter_replay.tests.no_launch import forbid_process_launch
 from charter_replay.variant_packs import generate_pack
 
 
@@ -35,6 +37,17 @@ class VariantReviewTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        self.prepare()
+
+    def prepare(
+        self,
+        family="private-family-marker",
+        baseline_reason="private-reason-marker",
+        candidate_reason="private-reason-marker",
+    ):
+        """Build the source, pack, report and manifest; callable again to rebuild."""
+        for name in ("source", "pack", "review"):
+            shutil.rmtree(self.root / name, ignore_errors=True)
         self.source = self.root / "source"
         self.source.mkdir()
         events, cases = [], []
@@ -57,7 +70,7 @@ class VariantReviewTests(unittest.TestCase):
                     schema_version="charter-case.v1",
                     event_id=event_id,
                     case_class=label,
-                    case_family="private-family-marker",
+                    case_family=family,
                     rationale="Synthetic evidence, not an execution claim.",
                     provenance="synthetic",
                 )
@@ -91,7 +104,9 @@ class VariantReviewTests(unittest.TestCase):
                         schema_version="policy-decision.v1",
                         event_id=event["event_id"],
                         effect=effect,
-                        reason="private-reason-marker",
+                        reason=(
+                            baseline_reason if side == "baseline" else candidate_reason
+                        ),
                     )
                 )
         self.compared = compare_decisions(
@@ -268,10 +283,24 @@ class VariantReviewTests(unittest.TestCase):
 
     def test_hostile_reasons_remain_text_and_csp_remains_exact(self):
         payload = '"><img src=x onerror="window.injected=1"><script>1</script>|\u202e'
-        for row in self.report["results"]:
-            row["baseline"]["reason"] = payload
-        self.save()
+        # Every attacker-controlled string: both policies' reasons and the family.
+        self.prepare(
+            family="fam" + payload,
+            baseline_reason="base" + payload,
+            candidate_reason="cand" + payload,
+        )
+        self.assertTrue(
+            all(
+                row["baseline"]["reason"] == "base" + payload
+                and row["candidate"]["reason"] == "cand" + payload
+                and row["case"]["case_family"] == "fam" + payload
+                for row in self.report["results"]
+            )
+        )
         files, _ = self.build()
+        for name, data in files.items():
+            if name in ("report.html", "pr-comment.md", "pr-comment-aggregate.md"):
+                self.assertNotIn("\u202e", data.decode(), name)
         markup = files["report.html"].decode()
         tags = Elements(markup).tags
         self.assertEqual(sum(tag == "script" for tag, _ in tags), 1)
@@ -282,10 +311,12 @@ class VariantReviewTests(unittest.TestCase):
         self.assertIn("\\u202e", markup)
         self.assertIn("script-src", markup)
         self.assertIn("noscript", markup)
+        for side in ("base", "cand", "fam"):
+            self.assertIn(side + "&quot;&gt;&lt;img", markup, side)
 
     def test_identical_inputs_produce_identical_bytes_and_never_launch(self):
         before = self.report_path.read_bytes(), self.manifest_path.read_bytes()
-        with mock.patch("subprocess.Popen", side_effect=AssertionError("launch")):
+        with forbid_process_launch():
             first = self.build()
             self.assertEqual(first, self.build())
         self.assertEqual(
@@ -496,6 +527,35 @@ class VariantReviewTests(unittest.TestCase):
                 self.manifest_path,
                 self.output,
             )
+
+    def test_verification_rejects_any_entry_beside_the_expected_files(self):
+        module = self.module()
+        self.assertEqual(self.publish(), 1)
+
+        def verify():
+            return module.verify_review(
+                self.source,
+                self.pack,
+                self.report_path,
+                self.manifest_path,
+                self.output,
+            )
+
+        self.assertEqual(verify(), 1)
+        planted = self.output / "extra.html"
+        planted.write_bytes(b"<script>unreviewed</script>")
+        with self.assertRaises(ValueError):
+            verify()
+        planted.unlink()
+        self.assertEqual(verify(), 1)
+        (self.output / "nested").mkdir()
+        with self.assertRaises(ValueError):
+            verify()
+        (self.output / "nested").rmdir()
+        self.assertEqual(verify(), 1)
+        (self.output / "report.html").rename(self.output / "REPORT.HTML")
+        with self.assertRaises(ValueError):
+            verify()
 
     def test_verify_review_cli_keeps_original_gate_without_writing(self):
         module = self.module()

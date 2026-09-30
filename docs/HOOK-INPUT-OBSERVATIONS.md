@@ -35,6 +35,12 @@ argument that was a plain word stays a word, so an output path the hook creates,
 such as `--log /tmp/out.json`, is not reported as a changed input. An argument
 that was a file and has vanished still changes the fingerprint.
 
+The converse is a known blind spot. A path that does not exist at the first
+observation is classified as a plain word, and argv alone cannot tell an output
+path from an input that is created later. An input file that appears partway
+through a recording, such as `--config cfg.json` written after the first
+observation, is therefore not detected, and neither is any later change to it.
+
 ## Evidence and limits
 
 These are two observations of the existing argv/file fingerprint, not an immutable

@@ -197,6 +197,23 @@ class HookInputChangeTests(unittest.TestCase):
         # Not the digest of the path as a plain word either.
         self.assertNotEqual(vanished, hooks.hook_identity(argv))
 
+    def test_legacy_digest_is_pinned_to_a_recorded_literal(self):
+        # Recorded from the 0.1.0 `hook_identity`, whose digest is the manifest
+        # `policy_commit` (its first 40 hex digits) for existing recordings. Only
+        # basenames and file bytes are hashed, so the temporary directory and the
+        # host path separator do not change it.
+        legacy = "a0f30046687548c460fc88815126a0cdea5b3fd1bf96c03ec5e0b331a4d38aa8"
+        argv = ("python", str(self.script), "--flag")
+        self.assertEqual(self.script.read_bytes(), b"pass\n")
+        self.assertEqual(hooks.hook_identity(argv), legacy)
+        self.assertEqual(
+            hooks.hook_identity(argv, file_positions=hooks.hook_file_positions(argv)),
+            legacy,
+        )
+        self.assertEqual(hooks.hook_identity(argv)[:40], legacy[:40])
+        self.script.write_bytes(b"pass \n")
+        self.assertNotEqual(hooks.hook_identity(argv), legacy)
+
     def test_existing_process_failure_and_observed_input_change_both_survive(self):
         def crash(*args, **kwargs):
             self.script.write_bytes(b"# changed\n")

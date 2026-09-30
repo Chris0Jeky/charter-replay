@@ -78,6 +78,19 @@ class HookSpecError(ValueError):
     """A hook command or option cannot be used."""
 
 
+class WorkspaceError(OSError):
+    """A private workspace could not be prepared.
+
+    `cleanup_failed` is true when the half-built workspace also could not be
+    removed, so the caller can report the leak instead of losing it.
+    """
+
+    def __init__(self, cause: OSError, *, cleanup_failed: bool) -> None:
+        super().__init__(cause.__class__.__name__)
+        self.cause_name = cause.__class__.__name__
+        self.cleanup_failed = cleanup_failed
+
+
 @dataclass(frozen=True)
 class HookSpec:
     argv: tuple[str, ...]
@@ -296,10 +309,23 @@ def prepare_workspace(template: Path | None) -> Path:
             shutil.copytree(template, workspace)
         else:
             workspace.mkdir()
+    except OSError as exc:
+        cleanup_failed = _cleanup_snapshot_root(root) is not None
+        if cleanup_failed:
+            raise WorkspaceError(exc, cleanup_failed=True) from exc
+        raise
     except BaseException:
         _cleanup_snapshot_root(root)
         raise
     return workspace
+
+
+def _cleanup_failure(event: dict[str, Any]) -> SourceFailure:
+    return SourceFailure(
+        code="hook-workspace-cleanup-failed",
+        message="The event's private hook workspace could not be removed.",
+        event_id=event["event_id"],
+    )
 
 
 def record_hook(
@@ -362,17 +388,23 @@ def record_hook(
                 event, runtime=spec.runtime, workspace=workspace, index=index
             )
             outcome = run_hook(spec, payload, workspace=workspace)
+        except WorkspaceError as exc:
+            outcome = HookOutcome(
+                "start-failed", f"workspace: {exc.cause_name}", None, 0
+            )
+            if exc.cleanup_failed:
+                cleanup_failure = _cleanup_failure(event)
+        except HookSpecError:
+            outcome = HookOutcome(
+                "start-failed", "hook cwd is outside its workspace", None, 0
+            )
         except OSError as exc:
             outcome = HookOutcome(
                 "start-failed", f"workspace: {exc.__class__.__name__}", None, 0
             )
         finally:
             if workspace is not None and _cleanup_snapshot_root(workspace.parent):
-                cleanup_failure = SourceFailure(
-                    code="hook-workspace-cleanup-failed",
-                    message="The event's private hook workspace could not be removed.",
-                    event_id=event["event_id"],
-                )
+                cleanup_failure = _cleanup_failure(event)
         return outcome, cleanup_failure
 
     with ThreadPoolExecutor(max_workers=jobs) as pool:

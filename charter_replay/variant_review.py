@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
 from typing import Any
@@ -188,9 +189,15 @@ def verify_review(
     run_manifest: str | Path,
     review: str | Path,
 ) -> int:
-    """Regenerate all named review artifacts; a rebinding of self-digests is insufficient."""
+    """Regenerate all named review artifacts and require exactly that file set."""
     files, code = build_review(source, pack, report, run_manifest)
     try:
+        # The directory must hold exactly the expected files: no extra file,
+        # subdirectory or link, whatever its name.
+        with os.scandir(review) as entries:
+            listing = {entry.name for entry in entries}
+        if listing != set(files):
+            raise VariantError("review directory differs from the expected set")
         for name, expected in files.items():
             if _read_regular(Path(review) / name, len(expected)) != expected:
                 raise VariantError("review differs from exact-source regeneration")
