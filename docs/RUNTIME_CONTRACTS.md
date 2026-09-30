@@ -124,14 +124,131 @@ Ambiguities resolved toward indeterminate (never toward allow or deny):
 
 ## Gemini CLI
 
-Sources: <https://geminicli.com/docs/hooks/reference/> and
-<https://geminicli.com/docs/hooks/>.
-BeforeTool provides a different event/tool vocabulary, including
-`run_shell_command`; allow/deny/block decisions are not the Claude-specific
-permissionDecision envelope. Exit 2 blocks; other failures can continue. This
-makes Gemini a useful third adapter because it tests whether the interface is
-actually runtime-neutral. Defer implementation until its payload, environment,
-input rewrites and unsupported-output handling have dedicated contract fixtures.
+`gemini` is `gemini-beforetool.v1`, selected by `--runtime gemini`. It is a
+documentation- and source-derived model of the BeforeTool command hook, not a
+certification against a running Gemini CLI binary. Pin a Gemini CLI revision and
+run its hooks before claiming fidelity.
+
+Sources, retrieved 2026-09-30 (the pages show no version or date). All fetched
+text was read as data:
+
+- <https://geminicli.com/docs/hooks/> and <https://geminicli.com/docs/hooks/reference/>
+  (the same text as `docs/hooks/{index,reference,best-practices,writing-hooks}.md`
+  in the repository below).
+- The open-source implementation, `google-gemini/gemini-cli` at
+  `38700b4b38bf387dafded6c97c3f190d084b49e9` (main, 2026-09-29; latest release
+  `v0.62.0`): `packages/core/src/hooks/{types,hookRunner,hookAggregator,hookEventHandler}.ts`,
+  `packages/core/src/core/coreToolHookTriggers.ts`,
+  `packages/core/src/scheduler/hook-utils.ts` and
+  `packages/core/src/tools/definitions/base-declarations.ts`. The prose is thin
+  in places, so the runner is used to corroborate it, and any point on which the
+  two differ is classified indeterminate below.
+
+What the contract encodes:
+
+- **Input.** One JSON object on stdin. Base fields `session_id`,
+  `transcript_path` (a string), `cwd`, `hook_event_name` (`BeforeTool`) and
+  `timestamp` (ISO 8601), plus `tool_name` and `tool_input`. For a shell command
+  `tool_name` is `run_shell_command` and `tool_input` carries the documented
+  `command` argument (the tool also takes `description`, `dir_path` and
+  `is_background`; the replay sends only `command`). `mcp_context` and
+  `original_request_name` are for MCP and tail calls and are not sent. The replay
+  uses a fixed `timestamp` (`1970-01-01T00:00:00.000Z`) so recordings do not
+  depend on the clock, and an empty `transcript_path`, which the runtime also
+  sends when it has no recording. Upstream has no `model`, `turn_id` or
+  `permission_mode` field.
+- **Environment and cwd.** The docs list `GEMINI_PROJECT_DIR`,
+  `GEMINI_PLANS_DIR`, `GEMINI_SESSION_ID`, `GEMINI_CWD` and `CLAUDE_PROJECT_DIR`
+  (an alias). The replay provides `GEMINI_PROJECT_DIR` and `CLAUDE_PROJECT_DIR`
+  (both the replay workspace) and `GEMINI_SESSION_ID` (`replay-session`). It does
+  not provide `GEMINI_CWD` (the adapter interface has no per-event value; the
+  hook still runs with the event `cwd` as working directory) or `GEMINI_PLANS_DIR`
+  (a machine-specific path). Upstream sets `GEMINI_PROJECT_DIR` to the payload
+  `cwd`, while the docs call it the project root; the replay follows the docs.
+- **Exit 0, no output:** success (allow). Empty stdout with non-JSON stderr is
+  also allow: stderr is only a log.
+- **Exit 2 with a stderr reason** blocks (deny; the reason is the trimmed
+  stderr). The turn continues.
+- **Decisions.** `decision: "deny"` (alias `"block"`) needs a reason and denies;
+  `decision: "allow"`, no decision, `systemMessage`, `suppressOutput`, and a
+  `stopReason` or `reason` without a matching decision are allow.
+  `continue: false` stops the whole agent loop and the tool call never runs; it is
+  recorded as the `stop` outcome (a deny effect), as for Claude.
+- **Failed hooks that let the call continue.** The docs say any other exit code is
+  a warning and the call proceeds, and that stdout which is not JSON makes
+  parsing fail, defaulting to allow with the text shown as a message. Neither is
+  scored as an allow: another exit code is `crash`, and non-JSON stdout is
+  `invalid-output`, both indeterminate. A recording that hits one exits 3, so a
+  blocking hook spoiled by a stray `echo` stays visible.
+- **Unsupported output.** `hookSpecificOutput.tool_input` merges over the model
+  arguments, so the command that runs is not the corpus command: `invalid-output`
+  (not modelled), unless the reply denies or stops, in which case nothing runs.
+  Also `invalid-output`: `decision` `ask` or `approve`, unknown top-level or
+  `hookSpecificOutput` fields (including Claude- and Codex-style
+  `permissionDecision`), `hookSpecificOutput` without `hookEventName` or with one
+  other than `BeforeTool`, wrong-typed members, deny or block without a reason,
+  non-object JSON, malformed JSON, duplicate member names, a byte-order mark, and
+  JSON nested past the parser limit.
+- **Timeout.** The documented default is 60000 ms; the replay keeps its own
+  `--hook-timeout` (default 10) and records `timeout`, indeterminate.
+- **`--ask-as`.** `ask` is not a documented BeforeTool decision, so this contract
+  never emits the `ask` outcome and `--ask-as` has no effect on a `gemini`
+  recording. The option still appears in the context descriptor.
+
+Reply mapping (`gemini`):
+
+| reply | outcome | effect |
+|---|---|---|
+| exit 0, no output (stderr is a log); no decision; `decision: allow` | allow | allow |
+| exit 2 with a plain-text stderr reason | deny | deny |
+| `decision` deny or block with a reason (a rewrite beside it is moot) | deny | deny |
+| `continue: false` (the reason falls back through `stopReason`, `reason`) | stop | deny |
+| other exit code, including a JSON deny printed on a warning exit | crash | indeterminate |
+| non-JSON stdout on exit 0 | invalid-output | indeterminate |
+| `hookSpecificOutput.tool_input` without a deny or stop | invalid-output | indeterminate |
+| `ask`; `approve`; unknown decision text; unknown fields; wrong types | invalid-output | indeterminate |
+| deny/block without a reason | invalid-output | indeterminate |
+| missing or other `hookEventName`; non-object or malformed JSON | invalid-output | indeterminate |
+| duplicate member names; byte-order mark; JSON nested past the parser limit | invalid-output | indeterminate |
+| exit 2 with empty stderr, with any stdout, or with JSON on stderr | invalid-output | indeterminate |
+| exit 0, empty stdout, JSON on stderr | invalid-output | indeterminate |
+
+Ambiguities resolved toward indeterminate (never toward allow or deny):
+
+- Exit 2: the docs say the action is blocked with stderr as the reason. The runner
+  reads stdout first (falling back to stderr), uses the exit code only for
+  non-JSON text, and lets a call with no output at all continue. So exit 2 with
+  empty stderr, with any stdout, or with JSON on stderr is `invalid-output`; only
+  exit 2 with a plain-text stderr and empty stdout, where both agree, is a deny.
+- Exit codes other than 0 and 2: the docs say the call continues. The runner
+  ignores the exit code when the output is JSON (so a deny printed on exit 1 still
+  blocks) and turns plain text on exit 3 or above into a deny, though its exit 1
+  becomes a warning. All of them are `crash`.
+- stderr: the docs say it is never parsed as JSON. The runner parses it when
+  stdout is empty, so JSON on stderr with empty stdout is `invalid-output`.
+- Non-JSON stdout on exit 0 is documented as allow but also as a failure. It is
+  `invalid-output`, not allow. The runner also accepts a JSON string that itself
+  holds JSON (double-decoded), an array, or `null`; the docs do not, so these are
+  `invalid-output`.
+- Duplicate member names: Node `JSON.parse` and Python both keep the last one,
+  while the docs are silent. Treated as invalid so neither order scores a decision.
+- A byte-order mark: the runner `trim()` strips it, so upstream would accept the
+  reply; the docs are silent and a PowerShell hook emits it by default. Treated as
+  invalid rather than as plain text or as JSON.
+- `decision: "ask"` and `"approve"` exist in the upstream types, and the scheduler
+  turns `ask` into a user confirmation, but the reference documents only `allow`
+  and `deny` (alias `block`). Treated as invalid.
+- Deny without a reason: the docs call `reason` required; the runner blocks anyway
+  with a placeholder reason. Treated as invalid (the docs' rule wins).
+- A deny beside a `tool_input` rewrite: the runner blocks before it applies the
+  rewrite, and the docs say a rewrite applies before execution. Scored as a deny.
+- `continue: false` also ends the agent session, which the replay does not model;
+  only the fact that this call never runs is recorded.
+- `hookSpecificOutput` is required to carry `hookEventName` (the upstream output
+  type requires it, the runner does not check it).
+- Multiple hooks for one event are merged by the runner (any block wins); the
+  replay models one synchronous command hook per event, with no `matcher`,
+  `sequential` or `env` configuration. Only the shell tool is modelled.
 
 ## Certification checklist
 
