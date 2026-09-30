@@ -28,6 +28,8 @@ Read and hashed (bytes, not paths):
 - The hook executable's bytes, resolved as the runtime would: a path-shaped
   `argv[0]` as given, a bare name on the `PATH` the hook receives. The name is
   part of the identity, so an alias is a different context.
+  On Windows, `CreateProcess` searches the application and system directories
+  before `PATH`, so a bare name can resolve differently from the bytes hashed.
 - Each later argv word that is an existing regular file: its basename, size and
   SHA-256.
 - The `--workspace` template tree, as `shutil.copytree` would copy it (links
@@ -65,7 +67,10 @@ The descriptor is computed before any workspace is prepared and again after the
 last invocation. The file holds the initial one. If the second differs, the
 recording fails with `hook-context-changed` (exit 3); if it cannot be read,
 `hook-context-unreadable`. Each argv word keeps the kind it had initially, so a
-path the hook creates as its own output stays a word and is not a change. A file
+path the hook creates as its own output stays a word and is not a change. The
+converse follows: an input file that appears mid-recording at a path that did
+not exist initially is not detected, since argv alone cannot tell it from an
+output. A file
 that is changed and restored between the two observations is not detected, and
 invocations in between may see intermediate contents. The two sides of `hooks`
 are observed when each begins, not together.

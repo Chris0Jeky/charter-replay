@@ -168,11 +168,8 @@ class HookContextRecordingTests(unittest.TestCase):
         spec = hooks.HookSpec((sys.executable, str(writer), str(result)))
         output, summary = self.record(spec)
         self.assertTrue(result.is_file(), "the hook must have created its output")
-        # Only the context check is asserted: the legacy fingerprint has its own
-        # behaviour for such a path, which is not this descriptor's concern.
-        codes = [failure["code"] for failure in summary["failures"]]
-        self.assertNotIn("hook-context-changed", codes)
-        self.assertNotIn("hook-context-unreadable", codes)
+        # Both observations pin argv kinds, so neither reports a change.
+        self.assertEqual(summary["failures"], [])
         kinds = [
             item["kind"]
             for item in json.loads((output / "hook-context.json").read_bytes())[
