@@ -87,7 +87,8 @@ existing paths, and links `review-manifest.json` last. Readers require the marke
 A directory can temporarily exist without it. Failure cleanup removes only
 unchanged files owned by this publication and preserves another writer's data.
 Names reject path traversal, Windows device names and trailing-dot aliases on all
-platforms. Artifact allocation is bounded at 128 MiB; rollback reads are bounded.
+platforms. Published artifact sets are limited to 128 MiB. Rendering allocates in
+memory before publication; this is not a peak-memory limit. Rollback reads are bounded.
 
 This requires a hard-link-capable filesystem and caller-owned parent directories.
 It is not crash-durable storage or a boundary against a hostile process replacing
@@ -136,3 +137,6 @@ enabled. The observed browser version and HTML digest accompany the screenshots.
 The helper loads HTML in memory with its own CSP. It does not certify local-file
 URL opening, other browser engines or screen-reader behavior. Screenshots contain
 full corpus text. Use synthetic data for publicly shared browser evidence.
+
+`REVIEW-ACCEPTANCE.md` describes the automated browser and isolated installed-wheel
+checks, their retained synthetic evidence, and their platform limits.
