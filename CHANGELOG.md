@@ -15,6 +15,11 @@
   from a pre-change recording even though the decisions reproduce; old decision
   files replay unchanged. The contract is a documentation-derived model, not a
   certification. See `docs/RUNTIME_CONTRACTS.md`.
+- A least-privilege composite GitHub Action (`action.yml`) runs `charter-replay hooks`
+  in the caller's job: inputs reach the CLI through `env:` only, outputs are
+  `exit-code`, `gate` and `output-dir`, the job summary is bounded, and it needs no
+  token permissions and uploads nothing. A self-test workflow exercises it with
+  `uses: ./` on Linux, Windows and macOS. See `docs/ACTION.md`.
 - `repeat` records one hook N times (2 to 50) over the same corpus and classifies each
   event as `stable`, `reason-varies`, `outcome-varies` or `effect-varies`, keyed by the
   hook context ID. It writes `stability.json` (`repeat-stability.v1`, no timing),
