@@ -233,7 +233,12 @@ class HookInputChangeTests(unittest.TestCase):
             )
         self.assertEqual(code, 3)
         self.assertEqual(self.manifest()["policy_commit"], initial[:40])
-        self.assertEqual(json.loads(stream.getvalue())["outcomes"]["allow"], 1)
+        printed = json.loads(stream.getvalue())
+        self.assertEqual(printed["outcomes"]["allow"], 1)
+        # Exit 3 alone could come from any source failure.
+        self.assertIn(
+            "hook-input-changed", {failure["code"] for failure in printed["failures"]}
+        )
 
     def test_identical_allow_replies_cannot_hide_real_self_modifying_hooks(self):
         code = (
