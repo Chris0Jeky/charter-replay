@@ -53,7 +53,8 @@ observation, not part of decision identity.
 Every event receives its own fresh workspace, including a fresh copy of a
 template when supplied. Serial and parallel workers preserve input order but
 share no writable replay workspace. The process cwd equals the payload cwd
-inside that event's workspace; `CLAUDE_PROJECT_DIR` still names its root. A
+inside that event's workspace; `CLAUDE_PROJECT_DIR` still names its root (except
+under `--runtime codex`, which sets no project-dir variable). A
 resolved cwd outside that root is rejected before invocation.
 
 The recorder reuses the kernel's read-only-aware cleanup on every event,

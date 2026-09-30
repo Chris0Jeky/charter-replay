@@ -53,9 +53,9 @@ The runner owns elapsed time, timeout and start-failed outcomes. Existing
 `hooks.build_payload`, `hooks.classify`, and `hooks.event_cwd` remain compatibility
 facades during extraction.
 
-The initial Claude and Codex adapters preserve existing behaviour. That is a
-compatibility milestone, not a new claim of current runtime fidelity. A later
-versioned Codex contract must represent unsupported output as indeterminate,
+The Claude and `codex-legacy` adapters preserve v0.1 behaviour. That is a
+compatibility milestone, not a claim of current runtime fidelity. The `codex`
+adapter (`codex-pretooluse.v1`) represents unsupported output as indeterminate,
 not as evidence that a real runtime denied the action. Unknown adapters fail
 before processes start. No plugin import string or arbitrary entry-point loader
 is needed yet. See [ADR 0001](adr/0001-runtime-adapters.md).

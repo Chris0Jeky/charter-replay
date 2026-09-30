@@ -86,7 +86,7 @@ class ClassifyTests(unittest.TestCase):
                 classify(0, body, "", runtime="claude")[0], "invalid-output"
             )
 
-    def test_codex_has_no_ask(self) -> None:
+    def test_codex_legacy_floor_has_no_ask(self) -> None:
         body = json.dumps(
             {
                 "hookSpecificOutput": {
@@ -95,7 +95,7 @@ class ClassifyTests(unittest.TestCase):
                 }
             }
         )
-        self.assertEqual(classify(0, body, "", runtime="codex")[0], "deny")
+        self.assertEqual(classify(0, body, "", runtime="codex-legacy")[0], "deny")
 
     def test_replies_the_runtime_would_reject_are_invalid_output(self) -> None:
         missing_event = {"hookSpecificOutput": {"permissionDecision": "deny"}}
@@ -267,6 +267,16 @@ class ProcessTests(unittest.TestCase):
             [json.loads(line)["outcome"] for line in outcome_lines],
             ["deny", "allow", "crash"],
         )
+
+
+class NestingTests(unittest.TestCase):
+    def test_deeply_nested_json_is_invalid_output_not_a_crash(self):
+        from charter_replay.adapters import get_adapter
+
+        for runtime in ("claude", "codex-legacy", "codex"):
+            with self.subTest(runtime):
+                outcome, _ = get_adapter(runtime).classify(0, "[" * 100_000, "")
+                self.assertEqual(outcome, "invalid-output")
 
 
 if __name__ == "__main__":

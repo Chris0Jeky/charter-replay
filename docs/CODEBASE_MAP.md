@@ -64,11 +64,11 @@ in `outcomes.jsonl` is observational and not deterministic.
    compare recordings. Two crashing hooks can therefore have an unchanged diff
    and a passing gate. Add failure propagation and exit-code regressions first.
 2. **Runtime fidelity is not yet certified.** Both payload builders are the
-   same; Codex differs only for ask. Current official Codex documentation says
-   unsupported ask/legacy approve/continue fields fail the hook and continue
-   the call. Preserve extraction behaviour, then introduce a versioned,
-   explicit contract rather than silently presenting the old floor as runtime
-   truth. See [runtime notes](RUNTIME_CONTRACTS.md).
+   same for Claude and `codex-legacy`; `codex` has its own payload and reply
+   grammar. Current official Codex documentation says unsupported
+   ask/legacy approve/continue fields fail the hook and continue the call, which
+   `codex-pretooluse.v1` records as indeterminate; the old floor stays as
+   `codex-legacy`, not as runtime truth. See [runtime notes](RUNTIME_CONTRACTS.md).
 3. **Hook input/context identity is weaker than process identity.** Hook
    argv/file identity is calculated after execution, omits executable bytes at
    argv[0], and does not bind runtime, workspace context or inherited config.

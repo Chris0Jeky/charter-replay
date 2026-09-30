@@ -41,7 +41,7 @@ the CLI exits nonzero, after the outputs and job summary are written. Add
 | `baseline`, `candidate` | required | hook commands: POSIX-quoted words or a JSON array |
 | `corpus` | bundled `charter` corpus | corpus directory |
 | `workspace` | none | template directory copied into each hook's cwd |
-| `runtime` | CLI default (`claude`) | `claude` or `codex` |
+| `runtime` | CLI default (`claude`) | `claude`, `codex` or `codex-legacy` (see RUNTIME_CONTRACTS.md) |
 | `ask-as` | CLI default (`deny`) | replay effect of an `ask` decision |
 | `hook-timeout` | CLI default (10) | seconds per hook invocation |
 | `jobs` | CLI default (4) | parallel invocations |
