@@ -15,10 +15,12 @@ class RuntimeRegistryTests(unittest.TestCase):
 
     def test_registry_keeps_existing_order_and_distinct_contracts(self):
         adapters = self.adapters()
-        self.assertEqual(adapters.RUNTIMES, ("claude", "codex", "codex-legacy"))
+        self.assertEqual(
+            adapters.RUNTIMES, ("claude", "codex", "codex-legacy", "gemini")
+        )
         self.assertEqual(hooks.RUNTIMES, adapters.RUNTIMES)
         self.assertEqual(
-            len({adapters.get_adapter(n).contract_id for n in adapters.RUNTIMES}), 3
+            len({adapters.get_adapter(n).contract_id for n in adapters.RUNTIMES}), 4
         )
         for name in adapters.RUNTIMES:
             self.assertEqual(adapters.get_adapter(name).name, name)
@@ -37,8 +39,9 @@ class RuntimeRegistryTests(unittest.TestCase):
             ("src\\pkg/deep", ("src", "pkg", "deep")),
             (None, ()),
         )
-        # The current Codex contract has its own payload and environment
-        # (test_codex_contract); the claude and legacy-floor payloads are the v0.1 one.
+        # The current Codex and Gemini contracts have their own payloads and
+        # environments (test_codex_contract, test_gemini_contract); the claude and
+        # legacy-floor payloads are the v0.1 one.
         for name in ("claude", "codex-legacy"):
             adapter = self.adapters().get_adapter(name)
             for cwd, parts in cases:

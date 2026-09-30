@@ -72,6 +72,12 @@ under `codex`, since `ask` is not a decision there. The context id in
 `hook-context.json` differs between the two runtimes. Reply table and sources:
 [docs/RUNTIME_CONTRACTS.md](docs/RUNTIME_CONTRACTS.md).
 
+`--runtime gemini` is `gemini-beforetool.v1`, modelled on the Gemini CLI hooks
+documentation and upstream source (not certified against a running Gemini CLI): a
+`BeforeTool` payload with `run_shell_command`, `decision` deny/block and exit 2 as
+denies, `continue: false` as `stop`, and other exits, non-JSON stdout, input
+rewrites and `ask` as indeterminate. `--ask-as` has no effect under `gemini`.
+
 `charter-replay import` builds a private corpus from local Claude Code and
 Codex transcripts. It scrubs credentials, home paths, the local user, host and
 Git identity, email addresses, private hosts and repository names, and it
