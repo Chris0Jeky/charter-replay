@@ -17,7 +17,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import shlex
 import shutil
 import subprocess
@@ -25,11 +25,12 @@ import tempfile
 import time
 from typing import Any, Sequence
 
+from charter_replay.adapters import RUNTIMES, get_adapter
+from charter_replay.adapters.base import event_cwd as event_cwd
 from charter_replay.corpus import POLICY_DECISION_VERSION
 from charter_replay.digests import sha256_bytes
 from charter_replay.policy_sources import _run_policy_process
 
-RUNTIMES = ("claude", "codex")
 ASK_EFFECTS = ("deny", "allow", "indeterminate")
 REASON_LIMIT = 500
 OUTCOMES = (
@@ -144,98 +145,27 @@ def _looks_like_file(word: str) -> bool:
     )
 
 
-def event_cwd(event: dict[str, Any], workspace: Path) -> Path:
-    """Place an event's corpus-relative `cwd` inside the replay workspace."""
-
-    relative = str(event.get("cwd") or "").replace("\\", "/")
-    parts = [
-        part
-        for part in PurePosixPath(relative).parts
-        if part not in ("", ".", "..", "/") and ":" not in part
-    ]
-    return workspace.joinpath(*parts)
-
-
 def build_payload(
     event: dict[str, Any], *, runtime: str, workspace: Path, index: int
 ) -> dict[str, Any]:
-    """Build the PreToolUse payload a runtime sends for one Bash command."""
-
-    return {
-        "session_id": "replay-session",
-        "transcript_path": str(workspace / ".replay" / "transcript.jsonl"),
-        "cwd": str(event_cwd(event, workspace)),
-        "permission_mode": "default",
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": {"command": event["command"]},
-        "tool_use_id": f"replay-{index:06d}",
-        "model": f"{runtime}-replay",
-    }
+    """Compatibility facade for the selected runtime payload builder."""
+    return get_adapter(runtime).build_payload(event, workspace=workspace, index=index)
 
 
 def _single_line(text: str) -> str:
     return " ".join(text.split())
 
 
-def _json_decision(value: object) -> tuple[str, str] | None:
-    """Return (outcome, reason) for a JSON hook reply, or None when it is not one."""
-
-    if not isinstance(value, dict):
-        return None
-    if value.get("continue") is False:
-        return "stop", str(value.get("stopReason") or "continue is false")
-    specific = value.get("hookSpecificOutput")
-    if isinstance(specific, dict) and "permissionDecision" in specific:
-        if specific.get("hookEventName") != "PreToolUse":
-            # The runtime rejects a decision without the matching event name.
-            return None
-        decision = specific.get("permissionDecision")
-        reason = str(specific.get("permissionDecisionReason") or "")
-        if decision in ("allow", "deny", "ask"):
-            return decision, reason
-        return None
-    legacy = value.get("decision")
-    if legacy == "approve":
-        return "allow", str(value.get("reason") or "")
-    if legacy == "block":
-        return "deny", str(value.get("reason") or "")
-    if legacy is not None:
-        return None
-    # A JSON reply without a decision lets the normal permission flow continue.
-    return "allow", "no decision field"
-
-
 def classify(
     exit_code: int, stdout: str, stderr: str, *, runtime: str
 ) -> tuple[str, str]:
-    """Map one completed hook process onto (outcome, detail)."""
-
-    if exit_code == 2:
-        return "deny", stderr.strip() or "exit 2"
-    if exit_code != 0:
-        first = stderr.strip().splitlines()[:1]
-        return "crash", f"exit {exit_code}" + (f": {first[0]}" if first else "")
-    body = stdout.strip()
-    if not body:
-        return "allow", "exit 0, no output"
-    try:
-        value = json.loads(body)
-    except ValueError:
-        return "invalid-output", "exit 0 with stdout that is not JSON"
-    result = _json_decision(value)
-    if result is None:
-        return "invalid-output", "JSON reply without a recognised decision"
-    outcome, reason = result
-    if runtime == "codex" and outcome == "ask":
-        # Codex has no ask decision; the floor contract treats it as deny.
-        return "deny", f"ask is unsupported on codex: {reason}"
-    return outcome, reason
+    """Compatibility facade for a completed runtime reply."""
+    return get_adapter(runtime).classify(exit_code, stdout, stderr)
 
 
-def _hook_env(workspace: Path) -> dict[str, str]:
+def _hook_env(workspace: Path, *, runtime: str = "claude") -> dict[str, str]:
     env = {name: os.environ[name] for name in PASSTHROUGH_ENV if name in os.environ}
-    env["CLAUDE_PROJECT_DIR"] = str(workspace)
+    env.update(get_adapter(runtime).environment(workspace))
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return env
@@ -255,7 +185,7 @@ def run_hook(
             json.dumps(payload).encode("utf-8"),
             timeout_seconds=spec.timeout,
             cwd=str(workspace),
-            environment=_hook_env(workspace),
+            environment=_hook_env(workspace, runtime=spec.runtime),
         )
     except subprocess.TimeoutExpired:
         elapsed = int((time.monotonic() - started) * 1000)
