@@ -322,6 +322,11 @@ def read_run(
     return observations, timing
 
 
+def _rename_pause() -> None:
+    # A seam of its own: patching time.sleep would also catch subprocess waits.
+    time.sleep(_RENAME_DELAY_SECONDS)
+
+
 def _rename_into_place(staging: Path, target: Path) -> None:
     """Rename staging to target, retrying while another process holds a handle.
 
@@ -335,7 +340,7 @@ def _rename_into_place(staging: Path, target: Path) -> None:
             return
         except PermissionError:
             if attempt + 1 < _RENAME_ATTEMPTS:
-                time.sleep(_RENAME_DELAY_SECONDS)
+                _rename_pause()
     raise PublicationError(_KEPT_MESSAGE)
 
 

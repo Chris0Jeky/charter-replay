@@ -391,7 +391,7 @@ class RepeatCliTests(unittest.TestCase):
 
     def test_a_transiently_locked_rename_is_retried_and_published(self):
         patched, calls = self.rename_failing(2)
-        with patched, mock.patch.object(repeat.time, "sleep") as sleep:
+        with patched, mock.patch.object(repeat, "_rename_pause") as sleep:
             code, _, _ = self.run_repeat(self.hook("deterministic"), "--repeats", "2")
         self.assertEqual(code, 0)
         self.assertEqual(len(calls), 3)
@@ -401,7 +401,7 @@ class RepeatCliTests(unittest.TestCase):
 
     def test_a_rename_that_stays_locked_keeps_the_recordings_and_says_so(self):
         patched, calls = self.rename_failing(None)
-        with patched, mock.patch.object(repeat.time, "sleep"):
+        with patched, mock.patch.object(repeat, "_rename_pause"):
             code, stdout, error = self.run_repeat(
                 self.hook("deterministic"), "--repeats", "2"
             )
@@ -425,7 +425,7 @@ class RepeatCliTests(unittest.TestCase):
 
         with (
             mock.patch.object(repeat.os, "rename", rename),
-            mock.patch.object(repeat.time, "sleep") as sleep,
+            mock.patch.object(repeat, "_rename_pause") as sleep,
         ):
             code, _, error = self.run_repeat(
                 self.hook("deterministic"), "--repeats", "2"
