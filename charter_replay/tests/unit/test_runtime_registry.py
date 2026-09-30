@@ -34,7 +34,7 @@ class RuntimeRegistryTests(unittest.TestCase):
         cases = (
             ("a/../b", ("a", "b")),
             ("src/pkg/deep", ("src", "pkg", "deep")),
-            ("src\pkg/deep", ("src", "pkg", "deep")),
+            ("src\\pkg/deep", ("src", "pkg", "deep")),
             (None, ()),
         )
         for name in self.adapters().RUNTIMES:
