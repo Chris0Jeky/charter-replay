@@ -45,9 +45,7 @@ class RuntimeRegistryTests(unittest.TestCase):
                     event["cwd"] = cwd
                 expected = {
                     "session_id": "replay-session",
-                    "transcript_path": str(
-                        workspace / ".replay" / "transcript.jsonl"
-                    ),
+                    "transcript_path": str(workspace / ".replay" / "transcript.jsonl"),
                     "cwd": str(workspace.joinpath(*parts)),
                     "permission_mode": "default",
                     "hook_event_name": "PreToolUse",
@@ -74,8 +72,9 @@ class RuntimeRegistryTests(unittest.TestCase):
 
     def test_unhashable_runtime_is_a_value_error_not_a_type_error(self):
         for bad in ([], {}, ["claude"]):
-            with self.subTest(bad=bad), self.assertRaisesRegex(
-                ValueError, "unsupported runtime"
+            with (
+                self.subTest(bad=bad),
+                self.assertRaisesRegex(ValueError, "unsupported runtime"),
             ):
                 self.adapters().get_adapter(bad)
 

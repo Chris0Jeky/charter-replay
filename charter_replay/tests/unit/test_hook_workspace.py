@@ -134,12 +134,15 @@ class WorkspaceTests(unittest.TestCase):
     def test_failed_copy_with_failed_cleanup_is_reported_not_lost(self):
         template = self.root / "template"
         template.mkdir()
-        with mock.patch.object(
-            hooks.shutil, "copytree", side_effect=OSError("synthetic copy failure")
-        ), mock.patch.object(
-            hooks,
-            "_cleanup_snapshot_root",
-            return_value=SourceFailure("synthetic", "forced cleanup failure"),
+        with (
+            mock.patch.object(
+                hooks.shutil, "copytree", side_effect=OSError("synthetic copy failure")
+            ),
+            mock.patch.object(
+                hooks,
+                "_cleanup_snapshot_root",
+                return_value=SourceFailure("synthetic", "forced cleanup failure"),
+            ),
         ):
             summary, records = self.record(
                 [_event("copy-clean", "allow")], template=template
@@ -177,9 +180,7 @@ class WorkspaceTests(unittest.TestCase):
         events = [_event("cwd-0", "reject"), _event("cwd-1", "allow")]
         with mock.patch.object(hooks, "run_hook", side_effect=reject_first):
             summary, records = self.record(events)
-        self.assertEqual(
-            [row["effect"] for row in records], ["indeterminate", "allow"]
-        )
+        self.assertEqual([row["effect"] for row in records], ["indeterminate", "allow"])
         self.assertEqual(summary["outcomes"]["start-failed"], 1)
         self.assertEqual(summary["outcomes"]["allow"], 1)
         outcomes = (self.root / "output-1" / "outcomes.jsonl").read_text("utf-8")

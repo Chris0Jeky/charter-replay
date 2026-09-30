@@ -95,7 +95,9 @@ class StaleOutputTests(unittest.TestCase):
             output = directory / "out"
             seeded = _seed(output)
             argv = _argv(corpus, output)
-            argv[argv.index("--baseline") + 1] = json.dumps([sys.executable, "missing-hook-xyz.py"])
+            argv[argv.index("--baseline") + 1] = json.dumps(
+                [sys.executable, "missing-hook-xyz.py"]
+            )
             code, _stderr = _invoke(argv)
             self.assertEqual(code, 2)
             self.assertTrue(all(path.read_bytes() == STALE_MARK for path in seeded))
