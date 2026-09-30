@@ -495,30 +495,31 @@ def publish_files(targets: dict[Path, bytes]) -> None:
             written.append(path)
             with os.fdopen(descriptor, "wb") as stream:
                 stream.write(data)
-    except FileExistsError as exc:
-        raise ValueError(
-            "output appeared during publication; nothing is overwritten"
-        ) from exc
-    except BaseException:
+    except BaseException as exc:
         for path in written:
             try:
                 path.unlink()
             except OSError:
                 pass
+        if isinstance(exc, FileExistsError):
+            raise ValueError(
+                "output appeared during publication; nothing is overwritten"
+            ) from exc
         raise
 
 
 def run_aggregate(report_dir: str, output: str, markdown: str | None = None) -> None:
     """Standalone `aggregate`: verify, build, check, then create the new files."""
-    targets = {Path(output): AGGREGATE_JSON}
+    requested = [(output, AGGREGATE_JSON)]
     if markdown is not None:
-        targets[Path(markdown)] = AGGREGATE_MD
-    if len({new_destination(path) for path in targets}) != len(targets):
+        requested.append((markdown, AGGREGATE_MD))
+    targets = [(new_destination(path), name) for path, name in requested]
+    if len({path for path, _name in targets}) != len(targets):
         raise ValueError("outputs must be different files")
     report = read_report_directory(report_dir)
-    texts = tuple(
-        {str(Path(report_dir)), str(Path(report_dir).resolve()), *map(str, targets)}
-    )
-    texts += tuple(str(new_destination(path)) for path in targets)
-    files = build_files(report, texts=texts)
-    publish_files({path: files[name] for path, name in targets.items()})
+    base = Path(report_dir)
+    texts = {str(base), str(base.resolve())}
+    texts.update(str(path) for path, _name in targets)
+    texts.update(str(raw) for raw, _name in requested)
+    files = build_files(report, texts=tuple(sorted(texts)))
+    publish_files({path: files[name] for path, name in targets})
