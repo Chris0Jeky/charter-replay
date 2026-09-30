@@ -24,7 +24,7 @@ inputs:
     required: false
     default: ""
   runtime:
-    description: Hook runtime adapter (`claude`, `codex` or `codex-legacy`). Empty keeps the CLI default.
+    description: Hook runtime adapter (`claude`, `codex`, `codex-legacy` or `gemini`). Empty keeps the CLI default.
     required: false
     default: ""
   ask-as:
