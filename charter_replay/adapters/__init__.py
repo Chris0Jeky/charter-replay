@@ -6,12 +6,14 @@ from charter_replay.adapters.base import RuntimeAdapter
 from charter_replay.adapters.claude import ClaudeAdapter
 from charter_replay.adapters.codex import CodexAdapter
 from charter_replay.adapters.codex_legacy import CodexLegacyAdapter
+from charter_replay.adapters.gemini import GeminiAdapter
 
 _ADAPTERS = MappingProxyType(
     {
         "claude": ClaudeAdapter(),
         "codex": CodexAdapter(),
         "codex-legacy": CodexLegacyAdapter(),
+        "gemini": GeminiAdapter(),
     }
 )
 RUNTIMES = tuple(_ADAPTERS)
