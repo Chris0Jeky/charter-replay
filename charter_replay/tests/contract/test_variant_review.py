@@ -17,6 +17,7 @@ from charter_replay.manifests import build_corpus_manifest, build_run_manifest
 from charter_replay.manifests import manifest_json_bytes
 from charter_replay.policy_sources import SourceFailure
 from charter_replay.reports import build_json_report, report_json_bytes
+from charter_replay.tests.no_launch import forbid_process_launch
 from charter_replay.variant_packs import generate_pack
 
 
@@ -285,7 +286,7 @@ class VariantReviewTests(unittest.TestCase):
 
     def test_identical_inputs_produce_identical_bytes_and_never_launch(self):
         before = self.report_path.read_bytes(), self.manifest_path.read_bytes()
-        with mock.patch("subprocess.Popen", side_effect=AssertionError("launch")):
+        with forbid_process_launch():
             first = self.build()
             self.assertEqual(first, self.build())
         self.assertEqual(
