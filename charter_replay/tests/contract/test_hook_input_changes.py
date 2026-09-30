@@ -223,7 +223,7 @@ class HookInputChangeTests(unittest.TestCase):
             summary = self.record()
         self.assertEqual(
             {failure["code"] for failure in summary["failures"]},
-            {"hook-crash", "hook-input-changed"},
+            {"hook-crash", "hook-input-changed", "hook-context-changed"},
         )
 
     def test_cli_record_marks_real_self_modification_as_source_failure(self):

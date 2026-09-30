@@ -69,6 +69,6 @@ process failures and two CLI cases with real synthetic self-modifying hook
 programs. Those programs modify only their own temporary test scripts. Corpus
 commands remain inert data and are never executed.
 
-The next provenance increment needs an explicitly versioned source/context model
-before repeat-stability results can claim that their inputs are comparable. Do not
-use the output-dependent recorded manifest digest as that context key.
+The versioned, input-only context descriptor for that purpose is described in
+[HOOK-CONTEXT.md](HOOK-CONTEXT.md). Do not use the output-dependent recorded
+manifest digest as a context key.
