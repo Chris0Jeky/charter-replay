@@ -8,6 +8,18 @@ The descriptor is a consistency key: two recordings with equal IDs were given th
 same captured inputs. It is not execution authentication, not repeat mode, not an
 immutable snapshot and not a safety certificate.
 
+## Schema note: `output_limit_bytes`
+
+`execution.output_limit_bytes` (integer, 1024 to 67108864) was added without a
+new schema version. Every newly written document carries it and it is part of the
+`context_id`. `validate_hook_context` also accepts a `hook-context.v1` document
+that lacks the key, as written before the limit existed, and still checks its
+`context_id` against the descriptor as it stands, so recorded files keep
+validating. Such a file describes a recording made without an output limit, and
+its id is never equal to a new recording's id. A document with the key out of
+range, or with any other unknown `execution` key, is rejected. Older releases
+reject new files, whose `execution` has a key they do not know.
+
 ## Input-only
 
 Nothing in the descriptor derives from decisions, outcomes, exit codes or timing.
@@ -24,7 +36,7 @@ compact separators and UTF-8, so equal descriptors always give equal IDs.
 Read and hashed (bytes, not paths):
 
 - The adapter contract id and runtime, the `ask` mapping, the per-invocation
-  timeout and the `--jobs` value.
+  timeout, the per-stream `--hook-output-limit` and the `--jobs` value.
 - The hook executable's bytes, resolved as the runtime would: a path-shaped
   `argv[0]` as given, a bare name on the `PATH` the hook receives. The name is
   part of the identity, so an alias is a different context.

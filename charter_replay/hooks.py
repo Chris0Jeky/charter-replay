@@ -32,12 +32,15 @@ from charter_replay.corpus import POLICY_DECISION_VERSION
 from charter_replay.digests import sha256_bytes
 from charter_replay.metrics import latency_summary
 from charter_replay.policy_sources import (
+    ProcessOutputLimitExceeded,
     SourceFailure,
     _cleanup_snapshot_root,
     _run_policy_process,
 )
 
-FAILURE_OUTCOMES = frozenset({"crash", "timeout", "invalid-output", "start-failed"})
+FAILURE_OUTCOMES = frozenset(
+    {"crash", "timeout", "invalid-output", "start-failed", "output-limit"}
+)
 ASK_EFFECTS = ("deny", "allow", "indeterminate")
 REASON_LIMIT = 500
 OUTCOMES = (
@@ -49,7 +52,12 @@ OUTCOMES = (
     "crash",
     "invalid-output",
     "start-failed",
+    "output-limit",
 )
+# Per-stream cap on what one hook invocation may print, in bytes.
+DEFAULT_OUTPUT_LIMIT = 1024 * 1024
+MIN_OUTPUT_LIMIT = 1024
+MAX_OUTPUT_LIMIT = 64 * 1024 * 1024
 # Environment names passed through to the hook. Everything else is dropped so a
 # recording does not depend on, or leak into, the caller's full environment.
 PASSTHROUGH_ENV = (
@@ -97,6 +105,7 @@ class HookSpec:
     runtime: str = "claude"
     timeout: float = 10.0
     ask_effect: str = "deny"
+    output_limit: int = DEFAULT_OUTPUT_LIMIT
 
 
 @dataclass(frozen=True)
@@ -211,6 +220,13 @@ def run_hook(
             timeout_seconds=spec.timeout,
             cwd=str(cwd),
             environment=_hook_env(workspace, runtime=spec.runtime),
+            output_limit=spec.output_limit,
+        )
+    except ProcessOutputLimitExceeded as exc:
+        # The reason names the stream and the limit, never what was printed.
+        elapsed = int((time.monotonic() - started) * 1000)
+        return HookOutcome(
+            "output-limit", f"{exc.stream} exceeded {exc.limit} bytes", None, elapsed
         )
     except subprocess.TimeoutExpired:
         elapsed = int((time.monotonic() - started) * 1000)
@@ -358,6 +374,14 @@ def record_hook(
         )
     if isinstance(jobs, bool) or not isinstance(jobs, int) or jobs < 1:
         raise HookSpecError("jobs must be a positive integer")
+    if (
+        type(spec.output_limit) is not int
+        or not MIN_OUTPUT_LIMIT <= spec.output_limit <= MAX_OUTPUT_LIMIT
+    ):
+        raise HookSpecError(
+            f"output limit must be an integer from {MIN_OUTPUT_LIMIT} "
+            f"to {MAX_OUTPUT_LIMIT} bytes"
+        )
 
     # hook_context builds on this module's constants, so it is imported late.
     from charter_replay import hook_context

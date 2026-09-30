@@ -49,7 +49,10 @@ class DescriptorTests(unittest.TestCase):
         self.assertEqual(first, self.describe(template=self.template))
         self.assertEqual(first["schema_version"], hc.HOOK_CONTEXT_VERSION)
         self.assertEqual(first["adapter"]["contract_id"], "claude-pretooluse.v1")
-        self.assertEqual(first["execution"], {"timeout_seconds": 10.0, "jobs": 1})
+        self.assertEqual(
+            first["execution"],
+            {"timeout_seconds": 10.0, "jobs": 1, "output_limit_bytes": 1048576},
+        )
         self.assertEqual(first["workspace_template"]["entries"], 3)
         self.assertEqual(first["workspace_template"]["bytes"], 2)
         self.assertEqual(len(hc.context_id(first)), 64)
