@@ -417,7 +417,12 @@ def _run_policy_process(
         if output_limit is not None:
             # The family is dead, so the files are final (bar an escapee).
             streams = (("stdout", stdout_stream), ("stderr", stderr_stream))
-            overflowed = _stream_over_limit(streams, output_limit)
+            try:
+                overflowed = _stream_over_limit(streams, output_limit)
+            except OSError as exc:
+                # Output that cannot be sized is unbounded, not a failed start:
+                # the watchdog already stopped the family for the same reason.
+                raise ProcessOutputLimitExceeded("unsizeable", output_limit) from exc
             if overflowed is not None:
                 raise ProcessOutputLimitExceeded(overflowed, output_limit)
         if timed_out:
