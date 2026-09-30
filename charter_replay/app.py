@@ -17,6 +17,7 @@ import stat
 import sys
 from typing import Any
 
+from charter_replay import aggregate
 from charter_replay import cli as kernel
 from charter_replay.hook_context import HOOK_CONTEXT_VERSION
 from charter_replay.hooks import ASK_EFFECTS, RUNTIMES, HookSpec, HookSpecError
@@ -159,6 +160,15 @@ def _parser() -> argparse.ArgumentParser:
         help="comma-separated classes that exit 1 (default: effect-varies)",
     )
     _add_hook_options(repeat)
+
+    agg = sub.add_parser(
+        "aggregate", help="verified counts-only aggregate of a report directory"
+    )
+    agg.add_argument("--report", required=True, help="kernel report directory")
+    agg.add_argument(
+        "--output", required=True, help="new aggregate.json; must not exist"
+    )
+    agg.add_argument("--markdown", help="optional new aggregate.md; must not exist")
 
     importer = sub.add_parser("import", help="build a private corpus from transcripts")
     importer.add_argument("--claude-root", help="default: ~/.claude/projects")
@@ -385,6 +395,7 @@ def _derived_artifacts(output: Path) -> list[Path]:
     """Name what an earlier run may have left in `output`, never following links."""
 
     targets = [output / SUMMARY_JSON, output / SUMMARY_MD]
+    targets += [output / name for name in aggregate.AGGREGATE_FILES]
     for directory, names in (
         (output / "report", REPORT_FILES),
         (output / "baseline", RECORDING_FILES),
@@ -452,6 +463,17 @@ def _unlink_stale(target: Path, output: Path) -> None:
     target.unlink(missing_ok=True)
 
 
+def _path_texts(corpus: str, output: Path) -> tuple[str, ...]:
+    """The paths a leak check must also look for, as given and as resolved."""
+    texts = {str(corpus), str(output)}
+    for value in (corpus, output):
+        try:
+            texts.add(str(Path(value).resolve()))
+        except (OSError, RuntimeError):
+            pass
+    return tuple(sorted(texts))
+
+
 def _run_hooks(args: argparse.Namespace) -> int:
     corpus = kernel._load_charter_corpus(args.corpus)
     events = corpus.events
@@ -506,7 +528,22 @@ def _run_hooks(args: argparse.Namespace) -> int:
     report_path = output / "report" / "report.json"
     if not report_path.is_file():
         return code
-    summary = breakdown(json.loads(report_path.read_text(encoding="utf-8")))
+    report_bytes = report_path.read_bytes()
+    # Built and verified before any summary is written, but published after it:
+    # a refusal must not hide the summary files this command has always written.
+    files: dict[str, bytes] = {}
+    refusal: Exception | None = None
+    try:
+        files = aggregate.build_files(
+            aggregate.admit_report(
+                report_bytes, (report_path.parent / "run-manifest.json").read_bytes()
+            ),
+            hook_outcomes={name: value["outcomes"] for name, value in outcomes.items()},
+            texts=_path_texts(args.corpus, output),
+        )
+    except (aggregate.AggregateInputError, aggregate.AggregateRefused) as exc:
+        refusal = exc
+    summary = breakdown(json.loads(report_bytes.decode("utf-8")))
     summary["outcomes"] = {name: value["outcomes"] for name, value in outcomes.items()}
     summary["contexts"] = {
         name: value["context_id"] for name, value in outcomes.items()
@@ -518,8 +555,18 @@ def _run_hooks(args: argparse.Namespace) -> int:
     )
     markdown = render_summary(summary, outcomes)
     (output / SUMMARY_MD).write_text(markdown, encoding="utf-8", newline="\n")
+    for name, data in files.items():
+        (output / name).write_bytes(data)
     _emit(markdown)
+    if refusal is not None:
+        print(f"{PROG}: {refusal}", file=sys.stderr)
+        return kernel.EXIT_SOURCE_FAILED
     return code
+
+
+def _run_aggregate(args: argparse.Namespace) -> int:
+    aggregate.run_aggregate(args.report, args.output, args.markdown)
+    return kernel.EXIT_OK
 
 
 def _run_import(args: argparse.Namespace) -> int:
@@ -544,6 +591,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_hooks(args)
         if args.command == "repeat":
             return _run_repeat(args)
+        if args.command == "aggregate":
+            return _run_aggregate(args)
         return _run_import(args)
     except (HookSpecError, kernel.ReplayInputError, ValueError) as exc:
         print(f"{PROG}: {exc}", file=sys.stderr)

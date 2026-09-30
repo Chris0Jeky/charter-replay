@@ -99,3 +99,79 @@ jobs:
             echo "::error::marker file created: $found"
             exit 1
           fi
+
+      - name: Replay the toy regression with an aggregate-only summary
+        id: aggregate
+        uses: ./
+        continue-on-error: true
+        with:
+          baseline: python examples/toy-guard/guard_v1.py
+          candidate: python examples/toy-guard/guard_v2.py
+          corpus: charter_replay/corpora/charter
+          output: ${{ runner.temp }}/action-aggregate
+          summary-mode: aggregate
+      - name: Assert the aggregate summary carries no toy-corpus family name
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.aggregate.outcome }}
+          EXIT_CODE: ${{ steps.aggregate.outputs.exit-code }}
+          OUT: ${{ steps.aggregate.outputs.output-dir }}
+          AGGREGATE_PATH: ${{ steps.aggregate.outputs.aggregate-path }}
+          CASES: ${{ github.workspace }}/charter_replay/corpora/charter/cases.jsonl
+        run: |
+          test "$OUTCOME" = failure
+          test "$EXIT_CODE" = 1
+          test -f "$AGGREGATE_PATH"
+          py=""
+          for candidate in python3 python; do
+            if "$candidate" -c 'import sys' >/dev/null 2>&1; then
+              py="$candidate"
+              break
+            fi
+          done
+          test -n "$py"
+          # The summary step appends exactly aggregate.md in this mode. A step's
+          # own GITHUB_STEP_SUMMARY file is not readable from a later step, so the
+          # appended file is what is asserted on.
+          "$py" - <<'PY'
+          import json
+          import os
+
+          out = os.environ["OUT"]
+          with open(os.environ["CASES"], encoding="utf-8") as handle:
+              cases = [json.loads(line) for line in handle if line.strip()]
+          names = {case["case_family"] for case in cases}
+          names |= {case["event_id"] for case in cases}
+          assert len(names) > 20, names
+          with open(os.path.join(out, "aggregate.md"), encoding="utf-8") as handle:
+              markdown = handle.read()
+          with open(os.environ["AGGREGATE_PATH"], encoding="utf-8") as handle:
+              text = handle.read()
+          assert markdown.startswith("<!-- charter-replay:aggregate.v1 -->"), markdown[:80]
+          assert json.loads(text)["counts"]["newly-allowed"] == 4
+          for name in sorted(names):
+              assert name not in markdown, name
+              assert name not in text, name
+          # The full summary still holds them, so the check above is meaningful.
+          with open(os.path.join(out, "summary.json"), encoding="utf-8") as handle:
+              full = handle.read()
+          assert all(name in full for name in {c["case_family"] for c in cases})
+          PY
+
+      - name: Reject an unknown summary-mode before anything runs
+        id: bad-mode
+        uses: ./
+        continue-on-error: true
+        with:
+          baseline: python examples/toy-guard/guard_v1.py
+          candidate: python examples/toy-guard/guard_v1.py
+          summary-mode: 'full$(touch injected-marker4)'
+      - name: Assert the unknown summary-mode was rejected
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.bad-mode.outcome }}
+          OUT: ${{ steps.bad-mode.outputs.output-dir }}
+        run: |
+          test "$OUTCOME" = failure
+          test -z "$OUT"
+          test ! -e "$GITHUB_WORKSPACE/injected-marker4"

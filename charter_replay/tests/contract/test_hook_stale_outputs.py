@@ -13,7 +13,7 @@ import sys
 import unittest
 from unittest import mock
 
-from charter_replay import app
+from charter_replay import aggregate, app
 from charter_replay.review_reports import REPORT_FILES
 from charter_replay.tests.contract import test_cli as fixtures
 from charter_replay.tests.links import link_directory
@@ -50,6 +50,7 @@ def _invoke(argv: list[str]) -> tuple[int, str]:
 
 def _seed(output: Path) -> list[Path]:
     seeded = [output / "summary.json", output / "summary.md"]
+    seeded += [output / name for name in aggregate.AGGREGATE_FILES]
     seeded += [output / "report" / name for name in REPORT_FILES]
     for side in ("baseline", "candidate"):
         seeded += [output / side / name for name in app.RECORDING_FILES]

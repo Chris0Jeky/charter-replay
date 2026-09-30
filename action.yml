@@ -48,9 +48,17 @@ inputs:
     required: false
     default: ""
   summary:
-    description: Append summary.md to the job summary (`true` or `false`).
+    description: Append the summary to the job summary (`true` or `false`).
     required: false
     default: "true"
+  summary-mode:
+    description: >-
+      Which file the job summary appends: `full` (summary.md, with case family
+      names) or `aggregate` (aggregate.md, counts over fixed vocabularies only;
+      recommended for a private corpus). `aggregate` also keeps the CLI's stdout
+      out of the step log. Any other value exits 2 before anything runs.
+    required: false
+    default: "full"
 
 outputs:
   exit-code:
@@ -64,6 +72,11 @@ outputs:
   output-dir:
     description: Directory holding summary.json, summary.md and the recordings.
     value: ${{ steps.replay.outputs.output-dir }}
+  aggregate-path:
+    description: >-
+      Path of aggregate.json (the verified aggregate.v1 counts), or empty when
+      none was written.
+    value: ${{ steps.replay.outputs.aggregate-path }}
 
 runs:
   using: composite
@@ -113,7 +126,15 @@ runs:
         CR_JOBS: ${{ inputs.jobs }}
         CR_FAIL_ON: ${{ inputs.fail-on }}
         CR_OUTPUT: ${{ inputs.output }}
+        CR_SUMMARY_MODE: ${{ inputs.summary-mode }}
       run: |
+        case "$CR_SUMMARY_MODE" in
+          full | aggregate) ;;
+          *)
+            echo "::error::summary-mode must be full or aggregate."
+            exit 2
+            ;;
+        esac
         out="$CR_OUTPUT"
         # Outputs are written as name=value lines; a line break would forge one.
         case "$out" in
@@ -130,7 +151,7 @@ runs:
           corpus="$GITHUB_ACTION_PATH/charter_replay/corpora/charter"
         fi
         # A summary left by an earlier run must not be read as this one.
-        rm -f -- "$out/summary.json" "$out/summary.md"
+        rm -f -- "$out/summary.json" "$out/summary.md" "$out/aggregate.json" "$out/aggregate.md"
 
         args=(hooks --baseline "$CR_BASELINE" --candidate "$CR_CANDIDATE" --corpus "$corpus" --output "$out")
         if [ -n "$CR_WORKSPACE" ]; then args+=(--workspace "$CR_WORKSPACE"); fi
@@ -141,8 +162,14 @@ runs:
         if [ -n "$CR_FAIL_ON" ]; then args+=(--fail-on "$CR_FAIL_ON"); fi
 
         # The step must survive a nonzero exit so outputs and the summary are written.
+        # In aggregate mode the CLI's stdout (the full summary) stays out of the
+        # log, which is as visible as the job summary. It remains in $out/summary.md.
         code=0
-        "$CR_PYTHON" -I -m charter_replay.app "${args[@]}" || code=$?
+        if [ "$CR_SUMMARY_MODE" = aggregate ]; then
+          "$CR_PYTHON" -I -m charter_replay.app "${args[@]}" >/dev/null || code=$?
+        else
+          "$CR_PYTHON" -I -m charter_replay.app "${args[@]}" || code=$?
+        fi
 
         gate=error
         if [ -f "$out/summary.json" ]; then
@@ -156,10 +183,13 @@ runs:
         print({"pass": "pass", "fail": "regression"}.get(status, "error"))
         ' "$out/summary.json")" || gate=error
         fi
+        aggregate_path=""
+        if [ -f "$out/aggregate.json" ]; then aggregate_path="$out/aggregate.json"; fi
         {
           echo "exit-code=$code"
           echo "gate=$gate"
           echo "output-dir=$out"
+          echo "aggregate-path=$aggregate_path"
         } >> "$GITHUB_OUTPUT"
 
     - name: Append the summary to the job summary
@@ -167,17 +197,23 @@ runs:
       shell: bash
       env:
         CR_OUTPUT_DIR: ${{ steps.replay.outputs.output-dir }}
+        CR_SUMMARY_MODE: ${{ inputs.summary-mode }}
       run: |
         md="$CR_OUTPUT_DIR/summary.md"
+        name=summary.md
+        if [ "$CR_SUMMARY_MODE" = aggregate ]; then
+          md="$CR_OUTPUT_DIR/aggregate.md"
+          name=aggregate.md
+        fi
         limit=61440
         if [ -f "$md" ]; then
           size="$(wc -c < "$md")"
           head -c "$limit" "$md" >> "$GITHUB_STEP_SUMMARY"
           if [ "$((size + 0))" -gt "$limit" ]; then
-            printf '\n\n_summary.md truncated at %s bytes; the full file is in the output directory._\n' "$limit" >> "$GITHUB_STEP_SUMMARY"
+            printf '\n\n_%s truncated at %s bytes; the full file is in the output directory._\n' "$name" "$limit" >> "$GITHUB_STEP_SUMMARY"
           fi
         else
-          printf '## charter-replay\n\nNo summary.md was written (see the step log).\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '## charter-replay\n\nNo %s was written (see the step log).\n' "$name" >> "$GITHUB_STEP_SUMMARY"
         fi
 
     - name: Fail when charter-replay exited nonzero

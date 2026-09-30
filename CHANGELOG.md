@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **Verified aggregate-only publication (`aggregate.v1`).** `hooks` now also writes
+  `aggregate.json` and `aggregate.md` into `--output`: a deterministic, counts-only
+  document (gate, diff-class counts, per-side hook outcomes and source-failure codes,
+  `case_class` counts) with no event id, command, reason, family name, rationale,
+  path, policy id or context id. Before writing, every free-text value of the report
+  and the corpus and output paths is searched for in the rendered bytes; a hit
+  refuses the aggregate (exit 3, fixed message, no echo). A new
+  `charter-replay aggregate --report DIR --output FILE [--markdown FILE]` rebuilds it
+  from a report directory after re-validating `report.json` against
+  `run-manifest.json` (hook outcomes are then `null`), and refuses an existing output.
+  Both files join the stale-output list. **Migration:** an output directory now holds
+  two more files, and a `hooks` run whose aggregate is refused exits 3 (the summary is
+  still written). See `docs/AGGREGATE.md`.
+- The Action gains `summary-mode` (`full`, the default, or `aggregate`; anything else
+  exits 2 before running) and the output `aggregate-path`. `aggregate` appends
+  `aggregate.md` instead of `summary.md` to the job summary and keeps the CLI's stdout
+  out of the step log.
 - A hook working directory outside its event workspace is now a per-event
   `start-failed` outcome (a source failure, exit 3) recorded like any other start
   failure, not a whole-run input error (exit 2) that stops the recording.

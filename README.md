@@ -15,7 +15,10 @@ charter-replay hooks   --baseline "python examples/toy-guard/guard_v1.py"   --ca
 > This re-evaluates recorded command events and decisions. It does not reproduce the original agent, environment, shell effects, or operating-system boundary.
 
 To run it on pull requests, use the least-privilege composite Action: see
-[docs/ACTION.md](docs/ACTION.md).
+[docs/ACTION.md](docs/ACTION.md). For a private corpus, publish only the
+verified counts-only `aggregate.v1` (written by `hooks`, or rebuilt with
+`charter-replay aggregate`; Action input `summary-mode: aggregate`): see
+[docs/AGGREGATE.md](docs/AGGREGATE.md).
 
 ## Measure a hook
 
