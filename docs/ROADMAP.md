@@ -7,6 +7,29 @@ until the maintainer releases it. See [architecture](ARCHITECTURE.md) and
 scope. S means one narrow boundary, M means a feature with integration tests,
 and L means a subsystem or migration.
 
+## Delivery status (2026-09-30)
+
+Merged to `main`. The PR is the evidence; its review record and exact-head CI are on it.
+
+| ID | State | Delivered by |
+|---|---|---|
+| R02-1 | done | #5 runtime adapter registry |
+| R02-2 | done | #9 failure admission and exit precedence |
+| R02-3 | done | #10 per-event workspace isolation |
+| R02-4 | done | #11 label agreement, coverage and observational latency |
+| R02-5 | done | #12 offline HTML and bounded PR text; #17 verified variant review |
+| R02-6 | done | #14 bounded POSIX variants; #15 seed and shape coverage |
+| R03-1 | done | #29 least-privilege composite Action with a three-OS self-test |
+| R03-2 | partial | the aggregate PR text exists (`pr-comment-aggregate.md`); verified aggregate-only publication is open |
+| R03-3 | done | #31 `codex-pretooluse.v1`, with the v0.1 floor kept as `codex-legacy` |
+| R03-4 | in progress | #32 Gemini BeforeTool adapter |
+| R04-1 | first increment | #20 bracketed input observations; #23 `hook-context.v1` descriptor. Executable dependencies, helper imports, permissions and environment values are declared unbound, not bound |
+| R04-3 | done | #25 repeat-stability mode keyed by context id |
+
+Review follow-ups: #26 (merged), plus the #28 LOW items. Acceptance CI covers
+browser and installed-wheel review (#18). Everything from R04-2 onward is still
+planned.
+
 ## v0.2: Trustworthy and reviewable shell diffs
 
 Goal: de-risk boundaries and make today's hook changes easier to review.

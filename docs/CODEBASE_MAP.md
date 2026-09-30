@@ -1,5 +1,10 @@
 # Codebase map and first findings
 
+> This is the v0.1.0 baseline snapshot that the roadmap was planned from. The
+> ranked blockers below are kept as written. Their resolution is recorded under
+> "Status since the baseline" at the end, and delivery state is tracked in
+> [the roadmap](ROADMAP.md#delivery-status-2026-09-30).
+
 Inspected baseline: `4a208a5dafc05f8282a4d3ff393aa1af70d2769e` (v0.1.0).
 The supplied archive reconstructs the exact Git tree
 `00f5903b730f262c3db48ddbf66ace491597e058`. No open issues or PRs preceded this work.
@@ -97,3 +102,29 @@ names, licence and zero runtime dependencies stay unchanged. No package release,
 external account registration or claim of independently certified safety occurs
 in this work. Proposed architecture is distinguished from implemented behaviour
 in the roadmap and individual PR evidence.
+
+## Status since the baseline
+
+1. Failure evidence: fixed by #9. Hook failures are source failures, both-side
+   failures cannot pass, and both sides are admitted before either runs.
+2. Runtime fidelity: `codex-pretooluse.v1` (#31) models current Codex documentation
+   and upstream parsing, with the old floor kept as `codex-legacy`. A Gemini adapter
+   is in progress (#32). None of these is certified against a running binary.
+3. Hook identity: the fingerprint is taken before execution and re-checked (#20).
+   `hook-context.v1` (#23) binds executable bytes, runtime, ask mapping, timeout,
+   jobs and the workspace template, and declares the rest unbound.
+4. Workspace and admission: each event gets a fresh workspace and the payload cwd
+   (#10). Admission precedes execution (#9). Derived outputs are cleared before a
+   rerun (#26).
+5. Labels and variants: label agreement exposes denominators and coverage (#11).
+   Variants carry verified seed lineage and visible skips (#14). Coverage separates
+   cross-version changes from within-policy shape disagreement (#15, #17).
+6. Presentation: every free-text field is escaped in HTML and Markdown (#12). The
+   PR text is aggregate by default. Aggregate-only publication for private corpora
+   is still open (R03-2).
+7. Process module: not yet split (R04-2).
+
+New modules since the baseline: `adapters/` (runtime contracts), `hook_context.py`,
+`repeat.py`, `metrics.py`, `review_reports.py`, `publication.py`, `variants*.py`,
+`variant_packs.py`, `variant_coverage.py`, `variant_review*.py`, and the composite
+`action.yml`.
