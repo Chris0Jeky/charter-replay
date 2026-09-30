@@ -148,6 +148,8 @@ _STATIC_TEXT = "\n".join(
         _FOOTER,
         "schema_version gate status fail_on triggered counts case_classes events",
         "hook_outcomes source_failures",
+        # Rendered forms that are not vocabulary entries themselves.
+        "PASS FAIL ERROR none null",
         *_VOCABULARY,
     )
 )
@@ -430,8 +432,9 @@ def _sensitive(report: dict[str, Any], texts: tuple[str, ...]) -> list[str]:
     return sorted(
         value
         for value in found
-        if len(value) >= LEAK_MINIMUM
-        and not value.isdigit()
+        if len(value) >= LEAK_MINIMUM and not value.isdigit()
+        # Whitespace and punctuation (indentation, table rules) identify nothing.
+        and any(character.isalnum() for character in value)
         and value not in _VOCABULARY
         and value not in _STATIC_TEXT
     )

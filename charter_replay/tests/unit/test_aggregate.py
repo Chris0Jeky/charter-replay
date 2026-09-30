@@ -233,6 +233,14 @@ class HostileFixtureTests(unittest.TestCase):
             files[aggregate.AGGREGATE_MD].startswith(b"<!-- charter-replay:")
         )
 
+    def test_rendered_words_and_punctuation_are_not_leaks(self):
+        # Status words, `none`/`null` and indentation are fixed output, so a
+        # corpus value equal to one of them must not refuse an honest aggregate.
+        for families in (("ERROR", "PASS", "FAIL"), ("none", "null"), ("    ", "----")):
+            with self.subTest(families=families):
+                report, _, _ = build(families=families)
+                aggregate.build_files(report, texts=families)
+
     def test_short_and_numeric_values_are_not_leaks(self):
         report, _, _ = build(families=("abc", "12345", "1"))
         aggregate.build_files(report, texts=("12345", "abc"))

@@ -88,3 +88,8 @@ the step log, which is as visible as the job summary. `full` is the default and
 changes nothing. The output `aggregate-path` names `aggregate.json`. See
 [ACTION.md](ACTION.md). Use `aggregate` for a private corpus. The output
 directory still holds the full summary, report and recordings; do not upload it.
+
+Aggregate mode hides stdout, not stderr. When the input itself is invalid (a
+missing or mismatched corpus entry), the error printed on stderr, and so in the
+step log, can still name a corpus entry. Validate a private corpus locally
+before wiring it into a shared workflow.
