@@ -130,9 +130,9 @@ class HookInputChangeTests(unittest.TestCase):
         real_identity = hooks.hook_identity
         real_workspace = hooks.prepare_workspace
 
-        def identity(argv):
+        def identity(argv, **kwargs):
             order.append("identity")
-            return real_identity(argv)
+            return real_identity(argv, **kwargs)
 
         def workspace(template):
             order.append("workspace")
@@ -165,6 +165,37 @@ class HookInputChangeTests(unittest.TestCase):
             json.loads((self.output / "outcomes.jsonl").read_bytes())["elapsed_ms"], 7
         )
         self.assertTrue((self.output / "measurements.json").is_file())
+
+    def test_output_path_created_by_the_hook_is_not_an_input_change(self):
+        self.script.write_text(
+            "import sys\n"
+            "from pathlib import Path\n"
+            "Path(sys.argv[1]).write_text('{}', encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        log = self.root / "hook-log.json"
+        argv = hooks.parse_hook_command(
+            json.dumps([sys.executable, str(self.script), str(log)])
+        )
+        self.spec = hooks.HookSpec(argv)
+        initial = hooks.hook_identity(argv)
+        summary = self.record()
+        self.assertTrue(log.is_file(), "the synthetic hook wrote its output path")
+        self.assertEqual(summary["failures"], [])
+        self.assertEqual(summary["outcomes"]["allow"], 1)
+        self.assertEqual(self.manifest()["policy_commit"], initial[:40])
+
+    def test_file_positions_keep_the_legacy_digest_and_mark_vanished_files(self):
+        argv = (sys.executable, str(self.script), "--flag")
+        positions = hooks.hook_file_positions(argv)
+        self.assertEqual(positions, frozenset({1}))
+        before = hooks.hook_identity(argv, file_positions=positions)
+        self.assertEqual(before, hooks.hook_identity(argv))
+        self.script.unlink()
+        vanished = hooks.hook_identity(argv, file_positions=positions)
+        self.assertNotEqual(vanished, before)
+        # Not the digest of the path as a plain word either.
+        self.assertNotEqual(vanished, hooks.hook_identity(argv))
 
     def test_existing_process_failure_and_observed_input_change_both_survive(self):
         def crash(*args, **kwargs):
@@ -202,7 +233,12 @@ class HookInputChangeTests(unittest.TestCase):
             )
         self.assertEqual(code, 3)
         self.assertEqual(self.manifest()["policy_commit"], initial[:40])
-        self.assertEqual(json.loads(stream.getvalue())["outcomes"]["allow"], 1)
+        printed = json.loads(stream.getvalue())
+        self.assertEqual(printed["outcomes"]["allow"], 1)
+        # Exit 3 alone could come from any source failure.
+        self.assertIn(
+            "hook-input-changed", {failure["code"] for failure in printed["failures"]}
+        )
 
     def test_identical_allow_replies_cannot_hide_real_self_modifying_hooks(self):
         code = (

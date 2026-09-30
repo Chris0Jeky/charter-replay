@@ -245,19 +245,40 @@ def decision_record(event_id: str, outcome: HookOutcome, ask_effect: str) -> dic
     }
 
 
-def hook_identity(argv: Sequence[str]) -> str:
+def hook_file_positions(argv: Sequence[str]) -> frozenset[int]:
+    """Name the argv positions after the executable that are existing files now."""
+
+    return frozenset(
+        position
+        for position, word in enumerate(argv)
+        if position and Path(word).is_file()
+    )
+
+
+def hook_identity(
+    argv: Sequence[str], *, file_positions: frozenset[int] | None = None
+) -> str:
     """Digest the hook's argv words and the bytes of any argument that is a file.
 
     The executable contributes only its name, and paths are reduced to their
-    basename, so the identity is portable across hosts.
+    basename, so the identity is portable across hosts. `file_positions` fixes
+    which arguments are files; by default it is whatever exists when called.
+    A later observation passes the initial positions so an output path the hook
+    creates is not mistaken for a changed input, and a vanished input file
+    still changes the digest.
     """
 
+    if file_positions is None:
+        file_positions = hook_file_positions(argv)
     digest = hashlib.sha256()
     for position, word in enumerate(argv):
         path = Path(word)
-        if position and path.is_file():
-            digest.update(b"file\0" + path.name.encode("utf-8") + b"\0")
-            digest.update(path.read_bytes())
+        if position in file_positions:
+            if path.is_file():
+                digest.update(b"file\0" + path.name.encode("utf-8") + b"\0")
+                digest.update(path.read_bytes())
+            else:
+                digest.update(b"missing\0" + path.name.encode("utf-8") + b"\0")
         else:
             name = Path(word).name if os.sep in word or "/" in word else word
             digest.update(b"word\0" + name.encode("utf-8") + b"\0")
@@ -317,7 +338,8 @@ def record_hook(
 
     # Retain the initially observed input, not whatever bytes a hook leaves behind.
     try:
-        initial_identity = hook_identity(spec.argv)
+        file_positions = hook_file_positions(spec.argv)
+        initial_identity = hook_identity(spec.argv, file_positions=file_positions)
     except OSError as exc:
         raise HookSpecError("hook input fingerprint could not be read") from exc
     try:
@@ -359,7 +381,8 @@ def record_hook(
 
     input_failure = None
     try:
-        if hook_identity(spec.argv) != initial_identity:
+        final_identity = hook_identity(spec.argv, file_positions=file_positions)
+        if final_identity != initial_identity:
             input_failure = SourceFailure(
                 code="hook-input-changed",
                 message="Hook input fingerprint changed during recording.",
