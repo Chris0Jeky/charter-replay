@@ -33,6 +33,10 @@ Each recording also writes `hook-context.json`, an input-only identity for what
 the hook was given (see [docs/HOOK-CONTEXT.md](docs/HOOK-CONTEXT.md)); it is a
 consistency key, not execution authentication.
 
+`charter-replay repeat` records one hook N times (2 to 50) and classifies each
+event as stable or as varying in reason, outcome or effect, keyed by that context
+ID; see [docs/REPEAT-STABILITY.md](docs/REPEAT-STABILITY.md).
+
 | hook reply | outcome | replay effect |
 |---|---|---|
 | exit 2 (stderr is the reason) | deny | deny |
