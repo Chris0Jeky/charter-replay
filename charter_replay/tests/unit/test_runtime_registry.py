@@ -28,35 +28,55 @@ class RuntimeRegistryTests(unittest.TestCase):
             self.adapters().get_adapter("unknown")
 
     def test_payload_and_environment_preserve_legacy_contract(self):
-        event = {"command": "inert text; not executed", "cwd": "a/../b"}
         workspace = Path(tempfile.gettempdir()) / "fictional-workspace"
+        # Corpus cwd values and the workspace-relative directory they must yield:
+        # a stripped `..`, a nested path, a Windows-style separator and no cwd.
+        cases = (
+            ("a/../b", ("a", "b")),
+            ("src/pkg/deep", ("src", "pkg", "deep")),
+            ("src\\pkg/deep", ("src", "pkg", "deep")),
+            (None, ()),
+        )
         for name in self.adapters().RUNTIMES:
             adapter = self.adapters().get_adapter(name)
-            expected = {
-                "session_id": "replay-session",
-                "transcript_path": str(workspace / ".replay" / "transcript.jsonl"),
-                "cwd": str(workspace / "a" / "b"),
-                "permission_mode": "default",
-                "hook_event_name": "PreToolUse",
-                "tool_name": "Bash",
-                "tool_input": {"command": event["command"]},
-                "tool_use_id": "replay-000003",
-                "model": f"{name}-replay",
-            }
-            with self.subTest(runtime=name):
-                self.assertEqual(
-                    adapter.build_payload(event, workspace=workspace, index=3), expected
-                )
-                self.assertEqual(
-                    hooks.build_payload(
-                        event, runtime=name, workspace=workspace, index=3
-                    ),
-                    expected,
-                )
-                self.assertEqual(
-                    adapter.environment(workspace),
-                    {"CLAUDE_PROJECT_DIR": str(workspace)},
-                )
+            for cwd, parts in cases:
+                event = {"command": "inert text; not executed"}
+                if cwd is not None:
+                    event["cwd"] = cwd
+                expected = {
+                    "session_id": "replay-session",
+                    "transcript_path": str(workspace / ".replay" / "transcript.jsonl"),
+                    "cwd": str(workspace.joinpath(*parts)),
+                    "permission_mode": "default",
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": event["command"]},
+                    "tool_use_id": "replay-000003",
+                    "model": f"{name}-replay",
+                }
+                with self.subTest(runtime=name, cwd=cwd):
+                    self.assertEqual(
+                        adapter.build_payload(event, workspace=workspace, index=3),
+                        expected,
+                    )
+                    self.assertEqual(
+                        hooks.build_payload(
+                            event, runtime=name, workspace=workspace, index=3
+                        ),
+                        expected,
+                    )
+                    self.assertEqual(
+                        adapter.environment(workspace),
+                        {"CLAUDE_PROJECT_DIR": str(workspace)},
+                    )
+
+    def test_unhashable_runtime_is_a_value_error_not_a_type_error(self):
+        for bad in ([], {}, ["claude"]):
+            with (
+                self.subTest(bad=bad),
+                self.assertRaisesRegex(ValueError, "unsupported runtime"),
+            ):
+                self.adapters().get_adapter(bad)
 
     def test_completed_reply_parity_including_existing_codex_floor(self):
         replies = [

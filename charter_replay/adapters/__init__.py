@@ -14,7 +14,7 @@ def get_adapter(name: str) -> RuntimeAdapter:
     """Resolve a supported runtime before any hook process is started."""
     try:
         return _ADAPTERS[name]
-    except KeyError as exc:
+    except (KeyError, TypeError) as exc:  # TypeError: an unhashable name
         raise ValueError(
             f"unsupported runtime {name!r}; choose {', '.join(RUNTIMES)}"
         ) from exc
