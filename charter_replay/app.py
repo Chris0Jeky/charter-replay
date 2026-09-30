@@ -15,6 +15,7 @@ import sys
 from typing import Any
 
 from charter_replay import cli as kernel
+from charter_replay.hook_context import HOOK_CONTEXT_VERSION
 from charter_replay.hooks import ASK_EFFECTS, RUNTIMES, HookSpec, HookSpecError
 from charter_replay.hooks import parse_hook_command, record_hook
 from charter_replay.policy_sources import SourceFailure
@@ -189,6 +190,14 @@ def render_summary(summary: dict[str, Any], outcomes: dict[str, Any]) -> str:
         cand = outcomes["candidate"]["outcomes"][name]
         if base or cand:
             lines.append(f"| {name} | {base} | {cand} |")
+    ids = {name: outcomes[name].get("context_id") for name in outcomes}
+    if all(ids.values()):
+        lines += [
+            "",
+            f"Hook context IDs ({HOOK_CONTEXT_VERSION}): "
+            f"baseline `{ids['baseline']}` · candidate `{ids['candidate']}` "
+            "— input-only consistency keys, not execution authentication.",
+        ]
     classes = list(counts)
     lines += ["", "## By case class", ""]
     lines += ["| case class | " + " | ".join(classes) + " |"]
@@ -273,6 +282,9 @@ def _run_hooks(args: argparse.Namespace) -> int:
         return code
     summary = breakdown(json.loads(report_path.read_text(encoding="utf-8")))
     summary["outcomes"] = {name: value["outcomes"] for name, value in outcomes.items()}
+    summary["contexts"] = {
+        name: value["context_id"] for name, value in outcomes.items()
+    }
     (output / SUMMARY_JSON).write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

@@ -333,12 +333,21 @@ def record_hook(
     if isinstance(jobs, bool) or not isinstance(jobs, int) or jobs < 1:
         raise HookSpecError("jobs must be a positive integer")
 
+    # hook_context builds on this module's constants, so it is imported late.
+    from charter_replay import hook_context
+
     # Retain the initially observed input, not whatever bytes a hook leaves behind.
     try:
         file_positions = hook_file_positions(spec.argv)
         initial_identity = hook_identity(spec.argv, file_positions=file_positions)
     except OSError as exc:
         raise HookSpecError("hook input fingerprint could not be read") from exc
+    try:
+        initial_context = hook_context.describe_hook_context(
+            spec, workspace_template=workspace_template, jobs=jobs, output=output
+        )
+    except OSError as exc:
+        raise HookSpecError("hook context could not be described") from exc
 
     def one(
         item: tuple[int, dict[str, Any]],
@@ -382,6 +391,30 @@ def record_hook(
         input_failure = SourceFailure(
             code="hook-input-unreadable",
             message="Hook input fingerprint could not be rechecked after recording.",
+        )
+
+    context_failure = None
+    try:
+        # The kinds are pinned: a file the hook creates (an output path) must
+        # not turn an argv word into a file and read as a change.
+        final_context = hook_context.describe_hook_context(
+            spec,
+            workspace_template=workspace_template,
+            jobs=jobs,
+            argv_kinds=hook_context.argv_kinds(initial_context),
+            output=output,
+        )
+        if hook_context.context_id(final_context) != hook_context.context_id(
+            initial_context
+        ):
+            context_failure = SourceFailure(
+                code="hook-context-changed",
+                message="Hook context changed during recording.",
+            )
+    except OSError:
+        context_failure = SourceFailure(
+            code="hook-context-unreadable",
+            message="Hook context could not be rechecked after recording.",
         )
 
     output.mkdir(parents=True, exist_ok=True)
@@ -436,6 +469,12 @@ def record_hook(
         encoding="utf-8",
         newline="\n",
     )
+    # The initial descriptor, like the initial fingerprint above: what the
+    # recording was given, not whatever a hook left behind.
+    context_document = hook_context.context_document(initial_context)
+    (output / "hook-context.json").write_bytes(
+        hook_context.hook_context_bytes(context_document)
+    )
     counts = {name: 0 for name in OUTCOMES}
     for outcome in outcomes:
         counts[outcome.outcome] += 1
@@ -453,8 +492,11 @@ def record_hook(
     )
     if input_failure is not None:
         failures.append(input_failure.as_dict())
+    if context_failure is not None:
+        failures.append(context_failure.as_dict())
     return {
         "policy_id": policy_id,
+        "context_id": context_document["context_id"],
         "events": len(events),
         "outcomes": counts,
         "failures": failures,
