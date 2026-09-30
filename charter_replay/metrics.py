@@ -172,6 +172,7 @@ def latency_summary(
         "crash",
         "invalid-output",
         "start-failed",
+        "output-limit",
     }
     for observation in observations:
         value, outcome = observation["elapsed_ms"], observation["outcome"]
