@@ -156,11 +156,16 @@ tree cleanup remain. Work toward reusable modules for supervised invocation,
 recorded sources and immutable snapshots, while preserving public imports until
 a migration is available. See [ADR 0006](adr/0006-kernel-simplification.md).
 
-Convenience hook identity is currently weaker than kernel process identity.
-A follow-up must capture code/config/context before execution, bind it in a
-versioned hook-source manifest, and verify it after execution. Moving all hooks
-into the process-source API without modeling their invocation contract would
-change semantics and is rejected.
+Convenience hook identity is still weaker than kernel process identity, but it
+is no longer implicit. Each recording writes `hook-context.json`
+([hook context](HOOK-CONTEXT.md)), a versioned, input-only descriptor computed
+before any workspace exists and again after the last invocation. A mismatch is a
+source failure. It binds adapter contract, ask mapping, timeout and jobs,
+executable and argv-file bytes and the workspace template tree. Executable
+dependencies, helper imports, permissions and environment values are declared
+unbound. It observes inputs and does not snapshot them; the kernel's process
+source still snapshots. Moving all hooks into the process-source API without
+modeling their invocation contract would change semantics and is rejected.
 
 ## Validation and release gates
 

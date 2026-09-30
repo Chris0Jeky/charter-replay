@@ -14,6 +14,16 @@
   `execution` gains `output_limit_bytes`, so every recording's context ID changes;
   files written before the field still validate. Kernel `process:` sources are
   unchanged. See `docs/HOOK_EXECUTION.md`.
+- **New runtime `gemini`** (`--runtime gemini`, contract `gemini-beforetool.v1`), the
+  third adapter, built from the Gemini CLI hooks documentation and the upstream
+  hook runner (pinned in `docs/RUNTIME_CONTRACTS.md`). The payload is a `BeforeTool`
+  event for `run_shell_command`; `decision` deny/block and exit 2 deny,
+  `continue: false` is `stop`, and other exits, non-JSON stdout, `tool_input`
+  rewrites, `ask`, unknown fields, duplicate keys and BOM-prefixed replies are
+  indeterminate. The hook gets `GEMINI_PROJECT_DIR`, `GEMINI_SESSION_ID` and
+  `CLAUDE_PROJECT_DIR`. A documentation- and source-derived model, not a
+  certification. The Claude, `codex` and `codex-legacy` contracts are unchanged.
+  The Action's `runtime` input accepts `gemini`.
 - **Migration: `--runtime codex` changed.** It now selects the new
   `codex-pretooluse.v1` contract, built from the current Codex hooks documentation.
   Replies Codex documents as unsupported (`ask`, legacy `approve`, `continue:
