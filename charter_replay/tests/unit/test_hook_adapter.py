@@ -86,7 +86,7 @@ class ClassifyTests(unittest.TestCase):
                 classify(0, body, "", runtime="claude")[0], "invalid-output"
             )
 
-    def test_codex_has_no_ask(self) -> None:
+    def test_codex_legacy_floor_has_no_ask(self) -> None:
         body = json.dumps(
             {
                 "hookSpecificOutput": {
@@ -95,7 +95,7 @@ class ClassifyTests(unittest.TestCase):
                 }
             }
         )
-        self.assertEqual(classify(0, body, "", runtime="codex")[0], "deny")
+        self.assertEqual(classify(0, body, "", runtime="codex-legacy")[0], "deny")
 
     def test_replies_the_runtime_would_reject_are_invalid_output(self) -> None:
         missing_event = {"hookSpecificOutput": {"permissionDecision": "deny"}}

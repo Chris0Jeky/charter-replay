@@ -15,10 +15,10 @@ class RuntimeRegistryTests(unittest.TestCase):
 
     def test_registry_keeps_existing_order_and_distinct_contracts(self):
         adapters = self.adapters()
-        self.assertEqual(adapters.RUNTIMES, ("claude", "codex"))
+        self.assertEqual(adapters.RUNTIMES, ("claude", "codex", "codex-legacy"))
         self.assertEqual(hooks.RUNTIMES, adapters.RUNTIMES)
         self.assertEqual(
-            len({adapters.get_adapter(n).contract_id for n in adapters.RUNTIMES}), 2
+            len({adapters.get_adapter(n).contract_id for n in adapters.RUNTIMES}), 3
         )
         for name in adapters.RUNTIMES:
             self.assertEqual(adapters.get_adapter(name).name, name)
@@ -37,7 +37,9 @@ class RuntimeRegistryTests(unittest.TestCase):
             ("src\\pkg/deep", ("src", "pkg", "deep")),
             (None, ()),
         )
-        for name in self.adapters().RUNTIMES:
+        # The current Codex contract has its own payload and environment
+        # (test_codex_contract); the claude and legacy-floor payloads are the v0.1 one.
+        for name in ("claude", "codex-legacy"):
             adapter = self.adapters().get_adapter(name)
             for cwd, parts in cases:
                 event = {"command": "inert text; not executed"}
@@ -52,7 +54,9 @@ class RuntimeRegistryTests(unittest.TestCase):
                     "tool_name": "Bash",
                     "tool_input": {"command": event["command"]},
                     "tool_use_id": "replay-000003",
-                    "model": f"{name}-replay",
+                    "model": (
+                        "codex-replay" if name == "codex-legacy" else "claude-replay"
+                    ),
                 }
                 with self.subTest(runtime=name, cwd=cwd):
                     self.assertEqual(
@@ -78,7 +82,7 @@ class RuntimeRegistryTests(unittest.TestCase):
             ):
                 self.adapters().get_adapter(bad)
 
-    def test_completed_reply_parity_including_existing_codex_floor(self):
+    def test_completed_reply_parity_for_claude_and_the_legacy_codex_floor(self):
         replies = [
             (0, "", "", ("allow", "exit 0, no output")),
             (2, "ignored", "blocked", ("deny", "blocked")),
@@ -92,7 +96,7 @@ class RuntimeRegistryTests(unittest.TestCase):
             (0, '{"continue":false}', "", ("stop", "continue is false")),
             (0, '{"decision":"approve"}', "", ("allow", "")),
         ]
-        for name in self.adapters().RUNTIMES:
+        for name in ("claude", "codex-legacy"):
             adapter = self.adapters().get_adapter(name)
             for code, stdout, stderr, expected in replies:
                 with self.subTest(runtime=name, reply=stdout, code=code):
@@ -105,7 +109,7 @@ class RuntimeRegistryTests(unittest.TestCase):
             self.adapters().get_adapter("claude").classify(0, ask, ""), ("ask", "why")
         )
         self.assertEqual(
-            self.adapters().get_adapter("codex").classify(0, ask, ""),
+            self.adapters().get_adapter("codex-legacy").classify(0, ask, ""),
             ("deny", "ask is unsupported on codex: why"),
         )
 

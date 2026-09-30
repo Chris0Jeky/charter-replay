@@ -5,8 +5,15 @@ from types import MappingProxyType
 from charter_replay.adapters.base import RuntimeAdapter
 from charter_replay.adapters.claude import ClaudeAdapter
 from charter_replay.adapters.codex import CodexAdapter
+from charter_replay.adapters.codex_legacy import CodexLegacyAdapter
 
-_ADAPTERS = MappingProxyType({"claude": ClaudeAdapter(), "codex": CodexAdapter()})
+_ADAPTERS = MappingProxyType(
+    {
+        "claude": ClaudeAdapter(),
+        "codex": CodexAdapter(),
+        "codex-legacy": CodexLegacyAdapter(),
+    }
+)
 RUNTIMES = tuple(_ADAPTERS)
 
 
