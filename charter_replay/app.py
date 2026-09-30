@@ -2,7 +2,8 @@
 
 `replay` and `validate` are the unchanged replay v0 kernel commands. `record`
 runs one hook over a corpus and writes a recorded decision source; `hooks`
-records two hooks and compares them through the kernel; `import` builds a
+records two hooks and compares them through the kernel; `repeat` records one
+hook several times and classifies how its decisions vary; `import` builds a
 private local corpus from agent transcripts.
 """
 
@@ -20,6 +21,9 @@ from charter_replay.hooks import ASK_EFFECTS, RUNTIMES, HookSpec, HookSpecError
 from charter_replay.hooks import parse_hook_command, record_hook
 from charter_replay.policy_sources import SourceFailure
 from charter_replay.metrics import render_label_summary, score_labels
+from charter_replay.repeat import DEFAULT_FAIL_ON, MAX_REPEATS, MIN_REPEATS
+from charter_replay.repeat import RepeatInputError, parse_fail_on, parse_repeats
+from charter_replay.repeat import render_markdown, run_repeat
 
 from charter_replay.review_reports import markdown_literal
 
@@ -36,6 +40,20 @@ def _positive_jobs(value: str) -> int:
     if jobs < 1:
         raise argparse.ArgumentTypeError("jobs must be a positive integer")
     return jobs
+
+
+def _repeats(value: str) -> int:
+    try:
+        return parse_repeats(value)
+    except RepeatInputError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _repeat_fail_on(value: str) -> tuple[str, ...]:
+    try:
+        return parse_fail_on(value)
+    except RepeatInputError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def _add_hook_options(parser: argparse.ArgumentParser) -> None:
@@ -84,6 +102,25 @@ def _parser() -> argparse.ArgumentParser:
     )
     hooks.add_argument("--fail-on", default=",".join(kernel.DEFAULT_FAIL_ON))
     _add_hook_options(hooks)
+
+    repeat = sub.add_parser("repeat", help="measure one hook's variation over repeats")
+    repeat.add_argument("--hook", required=True, help="hook command (words or JSON)")
+    repeat.add_argument("--corpus", required=True)
+    repeat.add_argument("--output", required=True, help="must not exist")
+    repeat.add_argument(
+        "--repeats",
+        required=True,
+        type=_repeats,
+        help=f"recordings to make, {MIN_REPEATS} to {MAX_REPEATS}",
+    )
+    repeat.add_argument("--workspace", help="template directory for the hook's cwd")
+    repeat.add_argument(
+        "--fail-on",
+        type=_repeat_fail_on,
+        default=DEFAULT_FAIL_ON,
+        help="comma-separated classes that exit 1 (default: effect-varies)",
+    )
+    _add_hook_options(repeat)
 
     importer = sub.add_parser("import", help="build a private corpus from transcripts")
     importer.add_argument("--claude-root", help="default: ~/.claude/projects")
@@ -136,6 +173,25 @@ def _run_record(args: argparse.Namespace) -> int:
     )
     print(json.dumps(summary, sort_keys=True))
     return kernel.EXIT_SOURCE_FAILED if summary["failures"] else kernel.EXIT_OK
+
+
+def _run_repeat(args: argparse.Namespace) -> int:
+    # Admit the corpus and the hook before anything runs; run_repeat then checks
+    # the output path, still before the first hook starts.
+    events = _load_events(args.corpus)
+    spec = _spec(args, args.hook)
+    workspace = _optional_path(args.workspace)
+    document, code = run_repeat(
+        spec,
+        events,
+        Path(args.output),
+        repeats=args.repeats,
+        workspace_template=workspace,
+        jobs=args.jobs,
+        fail_on=args.fail_on,
+    )
+    print(render_markdown(document))
+    return code
 
 
 def breakdown(report: dict[str, Any]) -> dict[str, Any]:
@@ -316,6 +372,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_record(args)
         if args.command == "hooks":
             return _run_hooks(args)
+        if args.command == "repeat":
+            return _run_repeat(args)
         return _run_import(args)
     except (HookSpecError, kernel.ReplayInputError, ValueError) as exc:
         print(f"{PROG}: {exc}", file=sys.stderr)
