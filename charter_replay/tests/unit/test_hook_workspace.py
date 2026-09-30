@@ -134,14 +134,20 @@ class WorkspaceTests(unittest.TestCase):
     def test_failed_copy_with_failed_cleanup_is_reported_not_lost(self):
         template = self.root / "template"
         template.mkdir()
+        real_cleanup = hooks._cleanup_snapshot_root
+
+        def failed_cleanup(root):
+            # Report the failure, but really remove the directory: a mocked
+            # cleanup that removes nothing leaks a `hook-replay-*` temp directory.
+            real_cleanup(root)
+            return SourceFailure("synthetic", "forced cleanup failure")
+
         with (
             mock.patch.object(
                 hooks.shutil, "copytree", side_effect=OSError("synthetic copy failure")
             ),
             mock.patch.object(
-                hooks,
-                "_cleanup_snapshot_root",
-                return_value=SourceFailure("synthetic", "forced cleanup failure"),
+                hooks, "_cleanup_snapshot_root", side_effect=failed_cleanup
             ),
         ):
             summary, records = self.record(
