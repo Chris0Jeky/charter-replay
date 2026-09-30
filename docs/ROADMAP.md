@@ -37,7 +37,7 @@ report artifact, with a documented separate comment-posting workflow.
 
 | ID | Issue title | Size | Acceptance criteria |
 |---|---|---|---|
-| R03-1 | Ship a least-privilege replay Action | M | CLI args passed without shell interpolation; exact tool revision; exit preserved; read-only fork-safe example; no secrets or credential persistence. |
+| R03-1 | Ship a least-privilege replay Action | M | CLI args passed without shell interpolation; exact tool revision; exit preserved; read-only fork-safe example; no secrets or credential persistence; untrusted candidates replay only public synthetic corpora and their reports are untrusted until an OS isolation boundary separates hook from report. |
 | R03-2 | Add verified aggregate-only publication | M | No commands, reasons, paths or event IDs in aggregate mode; opt-in full artifacts; comments have a stable marker and bounded size; malicious artifact tests. |
 | R03-3 | Correct and version the Codex contract | M | Current pinned runtime fixtures; unsupported replies remain indeterminate; old floor explicitly identified; migration and run-identity distinction. |
 | R03-4 | Add a Gemini BeforeTool adapter | M | Dedicated payload/classifier/environment fixtures; documented unsupported rewrites; third-runtime tests do not execute actions. |

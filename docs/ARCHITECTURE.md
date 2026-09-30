@@ -136,6 +136,17 @@ boundary; it must validate artifact identity and avoid executing artifacts.
 No automatic artifact upload of a private corpus or full report occurs by
 default. See [ADR 0005](adr/0005-report-pipeline.md).
 
+Read-only workflow permissions limit the GitHub token, not the hook. The hook
+runner is unsandboxed: a candidate hook can read and write the job's
+filesystem, reach the network and rewrite the corpus, recordings or reports it
+shares a job with. Therefore a report produced in the same job as an untrusted
+hook is evidence of that job's claims only, never a trusted artifact, and it
+must not be evaluated against a private corpus. Trusting results from a fork or
+unreviewed hook requires an OS-level filesystem and network isolation boundary
+around the hook, with corpus capture, verification and report generation
+outside the hook's authority. Until that boundary exists, the Action runs only
+public synthetic corpora for untrusted candidates.
+
 ## Kernel evolution and trust
 
 Keep the trusted core small by separating responsibilities, not by weakening
