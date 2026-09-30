@@ -225,9 +225,11 @@ def run_hook(
     except ProcessOutputLimitExceeded as exc:
         # The reason names the stream and the limit, never what was printed.
         elapsed = int((time.monotonic() - started) * 1000)
-        return HookOutcome(
-            "output-limit", f"{exc.stream} exceeded {exc.limit} bytes", None, elapsed
-        )
+        if exc.stream in ("stdout", "stderr"):
+            detail = f"{exc.stream} exceeded {exc.limit} bytes"
+        else:
+            detail = f"output could not be sized against the {exc.limit} byte limit"
+        return HookOutcome("output-limit", detail, None, elapsed)
     except subprocess.TimeoutExpired:
         elapsed = int((time.monotonic() - started) * 1000)
         return HookOutcome(

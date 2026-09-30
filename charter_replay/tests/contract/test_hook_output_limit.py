@@ -190,6 +190,40 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual("stdout", caught.exception.stream)
         self.assertEqual([2049, 0], reads)
 
+    def test_an_unsizeable_stream_after_the_kill_is_an_output_limit_not_a_start_failure(
+        self,
+    ):
+        with mock.patch.object(policy_sources.os, "fstat", side_effect=OSError("gone")):
+            with self.assertRaises(policy_sources.ProcessOutputLimitExceeded) as caught:
+                self.run_stubbed(b"y" * 10, [], output_limit=2048)
+        self.assertEqual("unsizeable", caught.exception.stream)
+        self.assertEqual(2048, caught.exception.limit)
+
+    def test_run_hook_labels_an_unsizeable_stream_output_limit(self):
+        spec = hooks.HookSpec(
+            (sys.executable, "-c", "pass"), timeout=5, output_limit=2048
+        )
+        workspace = hooks.prepare_workspace(None)
+        self.addCleanup(hooks._cleanup_snapshot_root, workspace.parent)
+        payload = hooks.build_payload(
+            _event("unsizeable-1", "inert command data"),
+            runtime="claude",
+            workspace=workspace,
+            index=0,
+        )
+        with mock.patch.object(policy_sources.os, "fstat", side_effect=OSError("gone")):
+            outcome = hooks.run_hook(spec, payload, workspace=workspace)
+        self.assertEqual("output-limit", outcome.outcome)
+        self.assertIsNone(outcome.exit_code)
+        self.assertEqual(
+            "output could not be sized against the 2048 byte limit", outcome.detail
+        )
+
+    def test_the_kernel_path_never_sizes_a_stream(self):
+        with mock.patch.object(policy_sources.os, "fstat", side_effect=OSError("gone")):
+            result = self.run_stubbed(b"y" * 10, [])
+        self.assertEqual(b"y" * 10, result.stdout)
+
     def test_read_process_stream_reads_at_most_one_byte_past_the_limit(self):
         with tempfile.TemporaryFile() as stream:
             stream.write(b"q" * 10_000)

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Kernel `report.md` renders free text literally (report-rendering change).** The
+  event table cells (event id, classification, baseline and candidate effect and
+  reason) and the source-failure lines now go through the same `markdown_literal`
+  the review renderers use: each non-alphanumeric character becomes a numeric entity
+  inside `<code>`, and control characters show as escapes, so links, mentions,
+  backticks, pipes and HTML in a reason or an event id no longer render as Markdown.
+  Table cells therefore look different (`<code>allow&#58; ...</code>`, and a line
+  break shows as an escape instead of a space). `report.json`, `run-manifest.json`
+  and the run identity are unchanged: the run id derives from the runner version,
+  policy and corpus digests and `fail_on`, never from `report.md`, and no fixture or
+  test pinned `report.md` bytes.
+- The Action gains the `hook-output-limit` input (passed as `--hook-output-limit`
+  only when non-empty) and the `summary-source` output (`summary.md`, `aggregate.md`,
+  `none`, or empty when the summary step did not run). The self-test asserts the
+  source in both summary modes and a 1 KiB flooding-hook case.
+- A hook output stream that cannot be sized after the kill is now the indeterminate
+  `output-limit` outcome (reason: output could not be sized against the limit), not
+  `start-failed`. The kernel `process:` path is untouched.
 - **Verified aggregate-only publication (`aggregate.v1`).** `hooks` now also writes
   `aggregate.json` and `aggregate.md` into `--output`: a deterministic, counts-only
   document (gate, diff-class counts, per-side hook outcomes and source-failure codes,

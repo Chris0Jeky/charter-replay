@@ -76,7 +76,9 @@ Windows Job Object), so a descendant that keeps printing after its parent exits
 is stopped too. The outcome is `output-limit`: indeterminate, a source failure
 (`hook-output-limit`, exit 3) and, like a timeout, no exit code. The reason
 names the stream and the limit (`output-limit: stdout exceeded 1048576 bytes`),
-never the output. If the hook had already exited when its files were sized, an
+never the output. If an output file cannot be sized at all (a failed `fstat`), the
+output is unbounded: the same outcome, with the reason `output could not be sized
+against the N byte limit`, not `start-failed`. If the hook had already exited when its files were sized, an
 overflow still counts, and it takes precedence over a timeout that ran out in the
 same moment. Reads are bounded to the limit plus one byte, so an oversized
 stream is detected without ever being read whole into memory.

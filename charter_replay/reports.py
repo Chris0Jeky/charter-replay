@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from html import escape
 import json
 import shlex
 from typing import Any
 
 from charter_replay.compare import ComparisonResult, DIFF_CLASSES
 from charter_replay.policy_sources import SourceFailure
+from charter_replay.review_reports import markdown_literal
 
 REPORT_VERSION = "replay-report.v1"
 DECISION_REPLAY_LIMITATION = (
@@ -67,13 +67,15 @@ def report_json_bytes(report: dict[str, Any]) -> bytes:
 
 
 def _table_cell(value: object) -> str:
-    return (
-        escape(str(value), quote=False)
-        .replace("\\", "\\\\")
-        .replace("|", "\\|")
-        .replace("\r", " ")
-        .replace("\n", " ")
-    )
+    """Render free text as inert literal code, as the review renderers do.
+
+    Every character outside letters, digits and spaces becomes a numeric entity
+    inside `<code>`, so a link, mention, backtick, pipe or HTML in a reason or an
+    event id can neither render nor break the table. Control characters are shown
+    as escapes, not as line breaks.
+    """
+
+    return markdown_literal(value)
 
 
 def _shell_reproduction_command(argv: list[str], shell: str) -> str | None:
@@ -190,9 +192,13 @@ def render_markdown_report(
         lines.extend(["", "## Source failures", ""])
         for source_name in ("baseline", "candidate"):
             for failure in report["source_failures"][source_name]:
-                event = f" for `{failure['event_id']}`" if "event_id" in failure else ""
+                event = (
+                    f" for {markdown_literal(failure['event_id'])}"
+                    if "event_id" in failure
+                    else ""
+                )
                 lines.append(
                     f"- {source_name}{event}: `{failure['code']}` — "
-                    f"{failure['message']}"
+                    f"{markdown_literal(failure['message'])}"
                 )
     return "\n".join(lines) + "\n"

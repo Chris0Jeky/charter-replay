@@ -4,6 +4,7 @@ import json
 import unittest
 
 from charter_replay.compare import ComparisonError, compare_decisions
+from charter_replay.policy_sources import SourceFailure
 from charter_replay.reports import (
     DECISION_REPLAY_LIMITATION,
     build_json_report,
@@ -332,12 +333,83 @@ class ComparisonTests(unittest.TestCase):
         )
         self.assertNotIn("<!--", markdown)
         self.assertNotIn("<img", markdown)
-        self.assertIn("evt&lt;!--", markdown)
+        self.assertNotIn("example.invalid", markdown)
+        self.assertIn("<code>evt&#60;&#33;&#45;&#45;</code>", markdown)
         self.assertIn(
-            'allow: policy returned allow &lt;img src="https://example.invalid/pixel"&gt; &amp; ok.',
-            markdown,
+            "<code>allow&#58; policy returned allow &#60;img src&#61;", markdown
         )
-        self.assertLess(markdown.index(later_id), markdown.index("## Limitations"))
+        self.assertLess(
+            markdown.index("later&#45;event"), markdown.index("## Limitations")
+        )
+
+    def test_markdown_table_neutralizes_links_mentions_backticks_and_breaks(
+        self,
+    ) -> None:
+        hostile_id = "evt|`[x](https://example.invalid/e)`"
+        hostile_reason = (
+            "see [docs](https://example.invalid/r) cc @octocat #123 `tick` | cell "
+            "next line ![i](https://example.invalid/p.png) ‮"
+        )
+        events = [event(hostile_id)]
+        baseline = [
+            {**decision(hostile_id, "allow", "baseline"), "reason": hostile_reason}
+        ]
+        candidate = [
+            {**decision(hostile_id, "deny", "candidate"), "reason": hostile_reason}
+        ]
+        comparison = compare_decisions(events, baseline, candidate)
+        manifest = {
+            "run_id": "e" * 64,
+            "generated_at": "2026-07-30T12:00:00Z",
+            "baseline": {"kind": "recorded", "id": "b", "sha256": "1" * 64},
+            "candidate": {"kind": "recorded", "id": "c", "sha256": "2" * 64},
+            "corpus": {
+                "id": "hostile",
+                "manifest_sha256": "3" * 64,
+                "event_count": 1,
+            },
+            "fail_on": ["newly-allowed"],
+        }
+        report = build_json_report(comparison, manifest)
+        markdown = render_markdown_report(
+            report, reproduction_argv=["replay"], reproduction_shell="posix-sh"
+        )
+        rows = markdown.split("| Event | Classification | Baseline | Candidate |")[1]
+        rows = rows.split("## Limitations")[0]
+        table_lines = [line for line in rows.splitlines() if line.startswith("| ")]
+        # One event row: a raw line break in the text would add another line.
+        self.assertEqual(1, len(table_lines))
+        data_row = table_lines[-1]
+        # Four cells only: a raw pipe or line break would add a cell or a line.
+        self.assertEqual(5, data_row.count("|"))
+        for raw in ("[docs]", "](", "@octocat", "`tick`", "https://", "‮", "!["):
+            self.assertNotIn(raw, data_row)
+        self.assertNotIn("`", data_row)
+        self.assertIn("&#64;octocat", data_row)
+        # The bidi control shows as an escape whose backslash is itself an entity.
+        self.assertIn("&#92;u202e", data_row)
+        # The machine-readable report keeps the exact text.
+        serialized = json.loads(report_json_bytes(report))
+        self.assertEqual(hostile_reason, serialized["results"][0]["baseline"]["reason"])
+        self.assertEqual(hostile_id, serialized["results"][0]["event"]["event_id"])
+
+    def test_source_failure_lines_render_event_id_and_message_literally(self) -> None:
+        failure = SourceFailure(
+            code="policy-failed",
+            message="broke [x](https://example.invalid/m) `tick`",
+            event_id="e`1",
+        )
+        report = build_json_report(
+            compare_decisions(self.events, self.baseline, self.candidate),
+            self.manifest,
+            baseline_failures=(failure,),
+        )
+        markdown = render_markdown_report(
+            report, reproduction_argv=["replay"], reproduction_shell="posix-sh"
+        )
+        section = markdown.split("## Source failures")[1]
+        self.assertNotIn("https://", section)
+        self.assertEqual(2, section.count("`"))  # only the code span
 
 
 if __name__ == "__main__":
