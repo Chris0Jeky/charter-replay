@@ -56,8 +56,9 @@ No current time, absolute machine path or random identifier is added.
 
 `verify-review` regenerates all eight files from the original inputs. It does not
 trust a completion marker's self-reported digests: editing HTML and rebinding that
-marker's digest still fails. Verification covers the eight named files, not
-unrelated files placed beside them. Keep the tool version used to generate a
+marker's digest still fails. The review directory must also
+list exactly those eight names: an extra file, subdirectory or link beside them
+fails verification, as does a renamed file. Keep the tool version used to generate a
 review when reproducing its exact rendered bytes across future renderer changes.
 
 ## Reading the view

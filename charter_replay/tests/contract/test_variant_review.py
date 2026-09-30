@@ -497,6 +497,35 @@ class VariantReviewTests(unittest.TestCase):
                 self.output,
             )
 
+    def test_verification_rejects_any_entry_beside_the_expected_files(self):
+        module = self.module()
+        self.assertEqual(self.publish(), 1)
+
+        def verify():
+            return module.verify_review(
+                self.source,
+                self.pack,
+                self.report_path,
+                self.manifest_path,
+                self.output,
+            )
+
+        self.assertEqual(verify(), 1)
+        planted = self.output / "extra.html"
+        planted.write_bytes(b"<script>unreviewed</script>")
+        with self.assertRaises(ValueError):
+            verify()
+        planted.unlink()
+        self.assertEqual(verify(), 1)
+        (self.output / "nested").mkdir()
+        with self.assertRaises(ValueError):
+            verify()
+        (self.output / "nested").rmdir()
+        self.assertEqual(verify(), 1)
+        (self.output / "report.html").rename(self.output / "REPORT.HTML")
+        with self.assertRaises(ValueError):
+            verify()
+
     def test_verify_review_cli_keeps_original_gate_without_writing(self):
         module = self.module()
         self.assertTrue(
