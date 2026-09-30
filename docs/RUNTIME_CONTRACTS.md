@@ -234,7 +234,9 @@ Ambiguities resolved toward indeterminate (never toward allow or deny):
   while the docs are silent. Treated as invalid so neither order scores a decision.
 - A byte-order mark: the runner `trim()` strips it, so upstream would accept the
   reply; the docs are silent and a PowerShell hook emits it by default. Treated as
-  invalid rather than as plain text or as JSON.
+  invalid rather than as plain text or as JSON. On stderr the mark is stripped
+  before the JSON check, as upstream does, so BOM-prefixed JSON on stderr is the
+  same ambiguous case as plain JSON on stderr, never a reason or an allow.
 - `decision: "ask"` and `"approve"` exist in the upstream types, and the scheduler
   turns `ask` into a user confirmation, but the reference documents only `allow`
   and `deny` (alias `block`). Treated as invalid.

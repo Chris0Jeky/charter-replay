@@ -379,18 +379,33 @@ UNSUPPORTED = (
     (
         "byte-order mark",
         0,
-        '﻿{"decision": "deny", "reason": "x"}',
+        '\ufeff{"decision": "deny", "reason": "x"}',
         "",
         "stdout starts with a byte-order mark",
     ),
     (
         "byte-order mark alone",
         0,
-        "﻿",
+        "\ufeff",
         "",
         "stdout starts with a byte-order mark",
     ),
     ("deep nesting", 0, "[" * 100_000, "", "JSON reply is nested too deeply"),
+    # Upstream strips a BOM before parsing stderr, so these are JSON replies.
+    (
+        "BOM-prefixed JSON deny on stderr, exit 0",
+        0,
+        "",
+        '\ufeff{"decision": "deny", "reason": "r"}',
+        "empty stdout with JSON on stderr is ambiguous",
+    ),
+    (
+        "BOM-prefixed JSON allow on stderr, exit 2",
+        2,
+        "",
+        '\ufeff{"decision": "allow"}',
+        "exit 2 with JSON on stderr is ambiguous",
+    ),
     (
         "JSON on stderr with empty stdout",
         0,

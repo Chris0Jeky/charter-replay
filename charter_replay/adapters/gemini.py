@@ -62,12 +62,14 @@ def _reason(value: object) -> str:
 
 
 def _parses_as_json(text: str) -> bool:
+    # Upstream `trim()` strips a byte-order mark before parsing; Python's does not.
+    text = text.lstrip("\ufeff")
     try:
         json.loads(text)
-    except RecursionError:
-        return True  # cannot tell, so the caller must not treat it as plain text
-    except ValueError:
+    except json.JSONDecodeError:
         return False
+    except (RecursionError, ValueError):
+        return True  # cannot tell, so the caller must not treat it as plain text
     return True
 
 
@@ -163,7 +165,7 @@ class GeminiAdapter:
                 # stdout is empty.
                 return _invalid("empty stdout with JSON on stderr is ambiguous")
             return "allow", "exit 0, no output"
-        if body[0] == "﻿":
+        if body[0] == "\ufeff":
             # Undocumented; a PowerShell hook's BOM-prefixed JSON is ambiguous.
             return _invalid("stdout starts with a byte-order mark")
         try:
