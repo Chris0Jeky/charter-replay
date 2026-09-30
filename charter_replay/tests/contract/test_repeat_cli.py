@@ -10,6 +10,7 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -341,6 +342,98 @@ class RepeatCliTests(unittest.TestCase):
             )
             self.assertEqual(code, 2, value)
         self.assertFalse(self.counter.exists())
+
+    def test_output_that_appears_during_publication_is_not_overwritten(self):
+        script = self.hook("deterministic")
+        real = repeat.measurements_bytes
+
+        def appears(records):
+            # After staging is built, before the re-check and the rename.
+            self.output.mkdir()
+            return real(records)
+
+        with mock.patch.object(repeat, "measurements_bytes", side_effect=appears):
+            code, _, error = self.run_repeat(script, "--repeats", "2")
+        self.assertEqual(code, 2)
+        self.assertIn("output appeared during publication", error)
+        self.assertNotIn(str(self.root), error)
+        self.assertEqual(list(self.output.iterdir()), [], "the newcomer is untouched")
+        self.assertEqual([p.name for p in self.parent.iterdir()], ["repeat"])
+
+    def test_a_file_that_appears_during_publication_is_not_replaced(self):
+        script = self.hook("deterministic")
+        real = repeat.measurements_bytes
+
+        def appears(records):
+            self.output.write_text("a file", encoding="utf-8")
+            return real(records)
+
+        with mock.patch.object(repeat, "measurements_bytes", side_effect=appears):
+            code, _, _ = self.run_repeat(script, "--repeats", "2")
+        self.assertEqual(code, 2)
+        self.assertEqual(self.output.read_text(encoding="utf-8"), "a file")
+        self.assertEqual([p.name for p in self.parent.iterdir()], ["repeat"])
+
+    def rename_failing(self, failures):
+        """Fail the staging rename `failures` times (None: always), then work."""
+
+        real = os.rename
+        calls = []
+
+        def rename(source, destination, *args, **kwargs):
+            if Path(destination) == self.output:
+                calls.append(1)
+                if failures is None or len(calls) <= failures:
+                    raise PermissionError("held by a sync client")
+            return real(source, destination, *args, **kwargs)
+
+        return mock.patch.object(repeat.os, "rename", rename), calls
+
+    def test_a_transiently_locked_rename_is_retried_and_published(self):
+        patched, calls = self.rename_failing(2)
+        with patched, mock.patch.object(repeat.time, "sleep") as sleep:
+            code, _, _ = self.run_repeat(self.hook("deterministic"), "--repeats", "2")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertTrue((self.output / "stability.json").is_file())
+        self.assertEqual([p.name for p in self.parent.iterdir()], ["repeat"])
+
+    def test_a_rename_that_stays_locked_keeps_the_recordings_and_says_so(self):
+        patched, calls = self.rename_failing(None)
+        with patched, mock.patch.object(repeat.time, "sleep"):
+            code, stdout, error = self.run_repeat(
+                self.hook("deterministic"), "--repeats", "2"
+            )
+        self.assertEqual(code, 3)
+        self.assertEqual(len(calls), repeat._RENAME_ATTEMPTS)
+        self.assertIn("kept in a hidden", error)
+        self.assertNotIn(str(self.root), error)
+        self.assertFalse(self.output.exists())
+        (kept,) = self.parent.iterdir()
+        self.assertTrue(kept.name.startswith(".charter-repeat-"))
+        self.assertTrue((kept / "stability.json").is_file())
+        self.assertEqual(len(list((kept / "runs").iterdir())), 2)
+
+    def test_other_rename_errors_are_not_retried_and_leave_no_staging(self):
+        real = os.rename
+
+        def rename(source, destination, *args, **kwargs):
+            if Path(destination) == self.output:
+                raise OSError("device full")
+            return real(source, destination, *args, **kwargs)
+
+        with (
+            mock.patch.object(repeat.os, "rename", rename),
+            mock.patch.object(repeat.time, "sleep") as sleep,
+        ):
+            code, _, error = self.run_repeat(
+                self.hook("deterministic"), "--repeats", "2"
+            )
+        self.assertEqual(code, 3)
+        self.assertIn("output failed (OSError)", error)
+        sleep.assert_not_called()
+        self.assertEqual(list(self.parent.iterdir()), [])
 
     def test_a_crash_midway_leaves_no_output_and_no_staging(self):
         script = self.hook("deterministic")
