@@ -2,7 +2,8 @@
 
 The repository root is a composite Action that runs `charter-replay hooks` in
 the caller's job. It installs the tool from its own checkout, so pinning the
-Action by commit SHA pins the tool revision exactly. It needs no token
+Action by commit SHA pins the tool revision exactly (the build backend it
+installs with is not pinned; see Runner requirements). It needs no token
 permissions, uploads nothing and posts no comment.
 
 ## Least-privilege workflow
@@ -73,7 +74,9 @@ Windows and macOS runners have it). The Action does not install or select a
 Python version. It creates a virtual environment under the runner temp and runs
 `pip install --no-deps` on its own checkout. The package has no runtime
 dependencies; pip fetches only the `setuptools` build backend, so the install
-needs the package index unless your pip is configured with a mirror. Hooks run
+needs the package index unless your pip is configured with a mirror. That build
+backend is resolved by pip at run time (`setuptools>=77`), not pinned by the
+Action's commit SHA, and its code runs in your job during the install. Hooks run
 with whatever is on `PATH` in your job, not the Action's environment.
 
 ## Trust

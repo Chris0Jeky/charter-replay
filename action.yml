@@ -76,7 +76,7 @@ runs:
         py=""
         for candidate in python3 python; do
           if command -v "$candidate" >/dev/null 2>&1 \
-            && "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
+            && "$candidate" -I -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
             py="$candidate"
             break
           fi
@@ -86,7 +86,7 @@ runs:
           exit 1
         fi
         venv="$RUNNER_TEMP/charter-replay-venv"
-        "$py" -m venv --clear "$venv"
+        "$py" -I -m venv --clear "$venv"
         if [ -f "$venv/Scripts/python.exe" ]; then
           venv_python="$venv/Scripts/python.exe"
         else
@@ -95,7 +95,7 @@ runs:
         # The package has no runtime dependencies; pip fetches only the
         # setuptools build backend. The tool comes from this action's checkout,
         # so pinning the action by commit SHA pins the tool revision.
-        PIP_NO_INPUT=1 "$venv_python" -m pip install --no-deps --disable-pip-version-check --quiet "$GITHUB_ACTION_PATH"
+        PIP_NO_INPUT=1 "$venv_python" -I -m pip install --no-deps --disable-pip-version-check --quiet "$GITHUB_ACTION_PATH"
         echo "python=$venv_python" >> "$GITHUB_OUTPUT"
 
     - name: Replay the corpus through both hooks
@@ -115,8 +115,15 @@ runs:
         CR_OUTPUT: ${{ inputs.output }}
       run: |
         out="$CR_OUTPUT"
+        # Outputs are written as name=value lines; a line break would forge one.
+        case "$out" in
+          *$'\n'* | *$'\r'*)
+            echo "::error::the output input must not contain a line break."
+            exit 2
+            ;;
+        esac
         if [ -z "$out" ]; then
-          out="$("$CR_PYTHON" -c 'import os, tempfile; print(tempfile.mkdtemp(prefix="charter-replay-", dir=os.environ["RUNNER_TEMP"]))')"
+          out="$("$CR_PYTHON" -I -c 'import os, tempfile; print(tempfile.mkdtemp(prefix="charter-replay-", dir=os.environ["RUNNER_TEMP"]))')"
         fi
         corpus="$CR_CORPUS"
         if [ -z "$corpus" ]; then
@@ -139,7 +146,7 @@ runs:
 
         gate=error
         if [ -f "$out/summary.json" ]; then
-          gate="$("$CR_PYTHON" -c '
+          gate="$("$CR_PYTHON" -I -c '
         import json, sys
         try:
             with open(sys.argv[1], encoding="utf-8") as handle:
