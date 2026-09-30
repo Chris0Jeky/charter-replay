@@ -17,10 +17,21 @@ from typing import Any
 from charter_replay import cli as kernel
 from charter_replay.hooks import ASK_EFFECTS, RUNTIMES, HookSpec, HookSpecError
 from charter_replay.hooks import parse_hook_command, record_hook
+from charter_replay.policy_sources import SourceFailure
 
 PROG = "charter-replay"
 SUMMARY_JSON = "summary.json"
 SUMMARY_MD = "summary.md"
+
+
+def _positive_jobs(value: str) -> int:
+    try:
+        jobs = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("jobs must be a positive integer") from exc
+    if jobs < 1:
+        raise argparse.ArgumentTypeError("jobs must be a positive integer")
+    return jobs
 
 
 def _add_hook_options(parser: argparse.ArgumentParser) -> None:
@@ -33,11 +44,13 @@ def _add_hook_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--hook-timeout",
-        type=float,
+        type=kernel._parse_timeout,
         default=10.0,
         help="seconds per hook invocation (default: 10)",
     )
-    parser.add_argument("--jobs", type=int, default=4, help="parallel invocations")
+    parser.add_argument(
+        "--jobs", type=_positive_jobs, default=4, help="parallel invocations"
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -117,7 +130,7 @@ def _run_record(args: argparse.Namespace) -> int:
         jobs=args.jobs,
     )
     print(json.dumps(summary, sort_keys=True))
-    return kernel.EXIT_OK
+    return kernel.EXIT_SOURCE_FAILED if summary["failures"] else kernel.EXIT_OK
 
 
 def breakdown(report: dict[str, Any]) -> dict[str, Any]:
@@ -141,6 +154,7 @@ def breakdown(report: dict[str, Any]) -> dict[str, Any]:
     return {
         "counts": report["counts"],
         "gate": report["gate"],
+        "source_failures": report["source_failures"],
         "effects": effects,
         "by_case_class": dict(sorted(by_class.items())),
         "by_case_family": dict(sorted(by_family.items())),
@@ -197,28 +211,19 @@ def render_summary(summary: dict[str, Any], outcomes: dict[str, Any]) -> str:
 
 
 def _run_hooks(args: argparse.Namespace) -> int:
-    events = _load_events(args.corpus)
+    corpus = kernel._load_charter_corpus(args.corpus)
+    events = corpus.events
     output = Path(args.output)
     shared = _optional_path(args.workspace)
-    sides = (
-        ("baseline", args.baseline, args.baseline_workspace),
-        ("candidate", args.candidate, args.candidate_workspace),
-    )
-    outcomes: dict[str, Any] = {}
-    for name, command, workspace in sides:
-        outcomes[name] = record_hook(
-            _spec(args, command),
-            events,
-            output / name,
-            policy_id=f"{name}-hook",
-            workspace_template=_optional_path(workspace) or shared,
-            jobs=args.jobs,
+    # Admit both sides and the comparison gate before either hook can run.
+    sides = [
+        (name, _spec(args, command), _optional_path(workspace) or shared)
+        for name, command, workspace in (
+            ("baseline", args.baseline, args.baseline_workspace),
+            ("candidate", args.candidate, args.candidate_workspace),
         )
-    # A report left by an earlier run must not be summarised as this one.
-    for stale in (output / "report" / "report.json", output / SUMMARY_JSON):
-        stale.unlink(missing_ok=True)
-    (output / SUMMARY_MD).unlink(missing_ok=True)
-    code = kernel.main(
+    ]
+    replay_args = kernel._parser().parse_args(
         [
             "replay",
             "--baseline",
@@ -232,6 +237,30 @@ def _run_hooks(args: argparse.Namespace) -> int:
             "--fail-on",
             args.fail_on,
         ]
+    )
+    outcomes: dict[str, Any] = {}
+    for name, spec, workspace in sides:
+        outcomes[name] = record_hook(
+            spec,
+            events,
+            output / name,
+            policy_id=f"{name}-hook",
+            workspace_template=workspace,
+            jobs=args.jobs,
+        )
+    # A report left by an earlier run must not be summarised as this one.
+    for stale in (output / "report" / "report.json", output / SUMMARY_JSON):
+        stale.unlink(missing_ok=True)
+    (output / SUMMARY_MD).unlink(missing_ok=True)
+    code = kernel._run_replay(
+        replay_args,
+        captured_corpus=corpus,
+        baseline_failures=tuple(
+            SourceFailure(**failure) for failure in outcomes["baseline"]["failures"]
+        ),
+        candidate_failures=tuple(
+            SourceFailure(**failure) for failure in outcomes["candidate"]["failures"]
+        ),
     )
     report_path = output / "report" / "report.json"
     if not report_path.is_file():

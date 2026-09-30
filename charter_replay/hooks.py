@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shlex
@@ -29,8 +30,9 @@ from charter_replay.adapters import RUNTIMES, get_adapter
 from charter_replay.adapters.base import event_cwd as event_cwd
 from charter_replay.corpus import POLICY_DECISION_VERSION
 from charter_replay.digests import sha256_bytes
-from charter_replay.policy_sources import _run_policy_process
+from charter_replay.policy_sources import SourceFailure, _run_policy_process
 
+FAILURE_OUTCOMES = frozenset({"crash", "timeout", "invalid-output", "start-failed"})
 ASK_EFFECTS = ("deny", "allow", "indeterminate")
 REASON_LIMIT = 500
 OUTCOMES = (
@@ -110,6 +112,8 @@ def parse_hook_command(value: str) -> tuple[str, ...]:
             argv = [_unquote(word) for word in argv]
     if not argv:
         raise HookSpecError("hook command is empty")
+    if any("\0" in word for word in argv):
+        raise HookSpecError("hook arguments must not contain NUL bytes")
     head = Path(argv[0])
     # A path-shaped executable (`./hook`, `tools/hook`) must survive the move
     # into the workspace; a bare name keeps its PATH lookup.
@@ -284,6 +288,17 @@ def record_hook(
         raise HookSpecError(f"runtime must be one of: {', '.join(RUNTIMES)}")
     if spec.ask_effect not in ASK_EFFECTS:
         raise HookSpecError(f"ask effect must be one of: {', '.join(ASK_EFFECTS)}")
+    if (
+        isinstance(spec.timeout, bool)
+        or not isinstance(spec.timeout, (int, float))
+        or not math.isfinite(spec.timeout)
+        or not 0 < spec.timeout <= 86400
+    ):
+        raise HookSpecError(
+            "timeout must be finite, greater than 0 and at most 86400 seconds"
+        )
+    if isinstance(jobs, bool) or not isinstance(jobs, int) or jobs < 1:
+        raise HookSpecError("jobs must be a positive integer")
     workspace = prepare_workspace(workspace_template)
     try:
         for event in events:
@@ -296,7 +311,7 @@ def record_hook(
             )
             return run_hook(spec, payload, workspace=workspace)
 
-        with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
             outcomes = list(pool.map(one, enumerate(events)))
     finally:
         shutil.rmtree(workspace.parent, ignore_errors=True)
@@ -343,4 +358,18 @@ def record_hook(
     counts = {name: 0 for name in OUTCOMES}
     for outcome in outcomes:
         counts[outcome.outcome] += 1
-    return {"policy_id": policy_id, "events": len(events), "outcomes": counts}
+    failures = [
+        SourceFailure(
+            code=f"hook-{outcome.outcome}",
+            message=f"Hook outcome is {outcome.outcome}; effect is indeterminate.",
+            event_id=event["event_id"],
+        ).as_dict()
+        for event, outcome in zip(events, outcomes)
+        if outcome.outcome in FAILURE_OUTCOMES
+    ]
+    return {
+        "policy_id": policy_id,
+        "events": len(events),
+        "outcomes": counts,
+        "failures": failures,
+    }
