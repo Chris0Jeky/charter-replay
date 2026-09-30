@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Hook output is bounded.** `record`, `hooks` and `repeat` take
+  `--hook-output-limit BYTES` (default 1 MiB per stream, 1 KiB to 64 MiB). A hook
+  that prints more to stdout or stderr is killed with its whole process family (the
+  POSIX process group or the Windows Job Object, the timeout kill path) and recorded as the new
+  outcome `output-limit`: indeterminate, a `hook-output-limit` source failure (exit
+  3), with a reason that names the stream and the limit and never the output.
+  Reads are bounded to the limit plus one byte. **Migration:** a hook that legitimately
+  prints more than 1 MiB on one stream now records `output-limit`; raise the limit.
+  `summary.json` outcome counts gain an `output-limit` key. `hook-context.v1`
+  `execution` gains `output_limit_bytes`, so every recording's context ID changes;
+  files written before the field still validate. Kernel `process:` sources are
+  unchanged. See `docs/HOOK_EXECUTION.md`.
 - **Migration: `--runtime codex` changed.** It now selects the new
   `codex-pretooluse.v1` contract, built from the current Codex hooks documentation.
   Replies Codex documents as unsupported (`ask`, legacy `approve`, `continue:

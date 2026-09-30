@@ -9,7 +9,7 @@ result is independent of any diff.
 ```
 charter-replay repeat --hook CMD --corpus DIR --output DIR --repeats N \
     [--workspace DIR] [--fail-on CLASSES] [--runtime R] [--ask-as E] \
-    [--hook-timeout S] [--jobs J]
+    [--hook-timeout S] [--hook-output-limit BYTES] [--jobs J]
 ```
 
 `--repeats` is an integer from 2 to 50. It, `--fail-on`, the corpus, the hook

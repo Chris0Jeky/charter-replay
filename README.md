@@ -52,6 +52,12 @@ ID; see [docs/REPEAT-STABILITY.md](docs/REPEAT-STABILITY.md).
 | exit 0 with unreadable output | invalid-output | indeterminate |
 | no reply within `--hook-timeout` | timeout | indeterminate |
 | executable cannot start | start-failed | indeterminate |
+| more than `--hook-output-limit` bytes (default 1 MiB) on stdout or stderr | output-limit | indeterminate |
+
+An `output-limit` outcome kills the hook's whole process family, is a source
+failure (`hook-output-limit`, exit 3), and its reason names the stream and the
+limit, never the output. `--hook-output-limit BYTES` (1024 to 67108864) is
+recorded in `hook-context.json`; see [docs/HOOK_EXECUTION.md](docs/HOOK_EXECUTION.md).
 
 The outcome is the prefix of each recorded reason, and `outcomes.jsonl` keeps
 the exit code and latency per event. The runtime itself lets a command proceed
