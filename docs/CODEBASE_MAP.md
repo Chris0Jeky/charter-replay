@@ -123,7 +123,7 @@ in the roadmap and individual PR evidence.
 6. Presentation: the HTML report, the PR text and `summary.md` escape every
    free-text field (#12). The kernel `report.md` escapes only HTML and table pipes.
    By default the PR text omits commands and reasons but still lists up to 20
-   changed case identifiers. Only `pr-comment-aggregate.md` omits case and policy
+   changed case identifiers. Among the review texts, only `pr-comment-aggregate.md` omits case and policy
    identifiers. `aggregate.v1` (#39) adds a verified, fixed-vocabulary aggregate
    with a fail-closed leak check, which the Action can use as its job summary.
 7. Process module: not yet split (R04-2).
