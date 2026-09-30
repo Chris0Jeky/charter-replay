@@ -142,7 +142,15 @@ def _run_record(args: argparse.Namespace) -> int:
         jobs=args.jobs,
     )
     print(json.dumps(summary, sort_keys=True))
-    return kernel.EXIT_SOURCE_FAILED if summary["failures"] else kernel.EXIT_OK
+    if summary["failures"]:
+        # Distinct from "output failed": the recording itself was written.
+        print(
+            f"{PROG}: gate error: {len(summary['failures'])} hook failure(s) "
+            "were recorded; the decisions were written",
+            file=sys.stderr,
+        )
+        return kernel.EXIT_SOURCE_FAILED
+    return kernel.EXIT_OK
 
 
 def breakdown(report: dict[str, Any]) -> dict[str, Any]:

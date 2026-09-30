@@ -131,5 +131,44 @@ class StaleOutputTests(unittest.TestCase):
             self.assertEqual((output / "summary.md").read_bytes(), STALE_MARK)
 
 
+class ExitThreeDiagnosticTests(unittest.TestCase):
+    def test_gate_error_and_output_failure_are_told_apart(self):
+        crash = json.dumps([sys.executable, "-c", "raise SystemExit(7)"])
+        with fixtures.CliTests().fixture("same") as data:
+            directory, corpus, _, _ = data
+            argv = _argv(corpus, directory / "gate")
+            argv[argv.index("--baseline") + 1] = crash
+            code, gate_stderr = _invoke(argv)
+            self.assertEqual(code, 3)
+            self.assertIn("replay gate error", gate_stderr)
+            self.assertNotIn("output failed", gate_stderr)
+            with mock.patch.object(
+                app.kernel, "_publish_report_set", side_effect=OSError("disk full")
+            ):
+                code, output_stderr = _invoke(_argv(corpus, directory / "publish"))
+            self.assertEqual(code, 3)
+            self.assertIn("replay output failed", output_stderr)
+            self.assertNotIn("gate error", output_stderr)
+
+    def test_record_failures_are_a_gate_error_not_an_output_failure(self):
+        crash = json.dumps([sys.executable, "-c", "raise SystemExit(7)"])
+        with fixtures.CliTests().fixture("same") as data:
+            directory, corpus, _, _ = data
+            code, stderr = _invoke(
+                [
+                    "record",
+                    "--hook",
+                    crash,
+                    "--corpus",
+                    str(corpus),
+                    "--output",
+                    str(directory / "rec"),
+                ]
+            )
+            self.assertEqual(code, 3)
+            self.assertIn("gate error", stderr)
+            self.assertNotIn("output failed", stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
