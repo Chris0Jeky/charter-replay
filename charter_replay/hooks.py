@@ -30,7 +30,11 @@ from charter_replay.adapters import RUNTIMES, get_adapter
 from charter_replay.adapters.base import event_cwd as event_cwd
 from charter_replay.corpus import POLICY_DECISION_VERSION
 from charter_replay.digests import sha256_bytes
-from charter_replay.policy_sources import SourceFailure, _run_policy_process
+from charter_replay.policy_sources import (
+    SourceFailure,
+    _cleanup_snapshot_root,
+    _run_policy_process,
+)
 
 FAILURE_OUTCOMES = frozenset({"crash", "timeout", "invalid-output", "start-failed"})
 ASK_EFFECTS = ("deny", "allow", "indeterminate")
@@ -182,13 +186,16 @@ def run_hook(
 
     started = time.monotonic()
     try:
+        cwd = Path(payload["cwd"]).resolve(strict=True)
+        if not cwd.is_relative_to(workspace.resolve(strict=True)):
+            raise HookSpecError("hook cwd must stay inside its replay workspace")
         # The replay kernel's runner: temporary-file streams, and the hook's
         # whole process family is killed on timeout (Job Object / process group).
         completed = _run_policy_process(
             list(spec.argv),
             json.dumps(payload).encode("utf-8"),
             timeout_seconds=spec.timeout,
-            cwd=str(workspace),
+            cwd=str(cwd),
             environment=_hook_env(workspace, runtime=spec.runtime),
         )
     except subprocess.TimeoutExpired:
@@ -262,10 +269,14 @@ def prepare_workspace(template: Path | None) -> Path:
     # Resolved, so a short (8.3) temporary path cannot hide from the reason scrub.
     root = Path(tempfile.mkdtemp(prefix="hook-replay-")).resolve()
     workspace = root / "workspace"
-    if template is not None:
-        shutil.copytree(template, workspace)
-    else:
-        workspace.mkdir()
+    try:
+        if template is not None:
+            shutil.copytree(template, workspace)
+        else:
+            workspace.mkdir()
+    except BaseException:
+        _cleanup_snapshot_root(root)
+        raise
     return workspace
 
 
@@ -299,22 +310,36 @@ def record_hook(
         )
     if isinstance(jobs, bool) or not isinstance(jobs, int) or jobs < 1:
         raise HookSpecError("jobs must be a positive integer")
-    workspace = prepare_workspace(workspace_template)
-    try:
-        for event in events:
-            event_cwd(event, workspace).mkdir(parents=True, exist_ok=True)
 
-        def one(item: tuple[int, dict[str, Any]]) -> HookOutcome:
-            index, event = item
+    def one(
+        item: tuple[int, dict[str, Any]],
+    ) -> tuple[HookOutcome, SourceFailure | None]:
+        index, event = item
+        workspace: Path | None = None
+        cleanup_failure = None
+        try:
+            workspace = prepare_workspace(workspace_template)
+            event_cwd(event, workspace).mkdir(parents=True, exist_ok=True)
             payload = build_payload(
                 event, runtime=spec.runtime, workspace=workspace, index=index
             )
-            return run_hook(spec, payload, workspace=workspace)
+            outcome = run_hook(spec, payload, workspace=workspace)
+        except OSError as exc:
+            outcome = HookOutcome(
+                "start-failed", f"workspace: {exc.__class__.__name__}", None, 0
+            )
+        finally:
+            if workspace is not None and _cleanup_snapshot_root(workspace.parent):
+                cleanup_failure = SourceFailure(
+                    code="hook-workspace-cleanup-failed",
+                    message="The event's private hook workspace could not be removed.",
+                    event_id=event["event_id"],
+                )
+        return outcome, cleanup_failure
 
-        with ThreadPoolExecutor(max_workers=jobs) as pool:
-            outcomes = list(pool.map(one, enumerate(events)))
-    finally:
-        shutil.rmtree(workspace.parent, ignore_errors=True)
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        observations = list(pool.map(one, enumerate(events)))
+    outcomes = [outcome for outcome, _failure in observations]
 
     output.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -367,6 +392,9 @@ def record_hook(
         for event, outcome in zip(events, outcomes)
         if outcome.outcome in FAILURE_OUTCOMES
     ]
+    failures.extend(
+        failure.as_dict() for _outcome, failure in observations if failure is not None
+    )
     return {
         "policy_id": policy_id,
         "events": len(events),
