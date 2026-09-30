@@ -127,6 +127,7 @@
       "crash": 0,
       "deny": 9,
       "invalid-output": 0,
+      "output-limit": 0,
       "start-failed": 0,
       "stop": 0,
       "timeout": 0
@@ -137,6 +138,7 @@
       "crash": 0,
       "deny": 6,
       "invalid-output": 0,
+      "output-limit": 0,
       "start-failed": 0,
       "stop": 0,
       "timeout": 0

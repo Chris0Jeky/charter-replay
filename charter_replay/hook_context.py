@@ -23,6 +23,7 @@ from typing import Any
 
 from charter_replay.adapters import RUNTIMES, get_adapter
 from charter_replay.hooks import ASK_EFFECTS, PASSTHROUGH_ENV, HookSpec
+from charter_replay.hooks import MAX_OUTPUT_LIMIT, MIN_OUTPUT_LIMIT
 
 HOOK_CONTEXT_VERSION = "hook-context.v1"
 # Bounds are checked from stat data before any content is read or hashed.
@@ -306,7 +307,11 @@ def describe_hook_context(
         "schema_version": HOOK_CONTEXT_VERSION,
         "adapter": {"runtime": spec.runtime, "contract_id": adapter.contract_id},
         "decision_mapping": {"ask_effect": spec.ask_effect},
-        "execution": {"timeout_seconds": float(spec.timeout), "jobs": jobs},
+        "execution": {
+            "timeout_seconds": float(spec.timeout),
+            "jobs": jobs,
+            "output_limit_bytes": spec.output_limit,
+        },
         "hook": {"argv": argv},
         "workspace_template": template,
         "environment": {
@@ -479,9 +484,22 @@ def validate_hook_context(document: Any) -> None:
     )
     if mapping["ask_effect"] not in ASK_EFFECTS:
         raise _fail("descriptor.decision_mapping.ask_effect is not supported")
-    execution = _mapping(
-        descriptor["execution"], {"timeout_seconds", "jobs"}, "descriptor.execution"
-    )
+    execution = descriptor["execution"]
+    # `output_limit_bytes` arrived after the first `hook-context.v1` files were
+    # written; those lack it and stay valid. New files always carry it.
+    if isinstance(execution, dict) and "output_limit_bytes" not in execution:
+        execution_keys = {"timeout_seconds", "jobs"}
+    else:
+        execution_keys = {"timeout_seconds", "jobs", "output_limit_bytes"}
+    execution = _mapping(execution, execution_keys, "descriptor.execution")
+    if "output_limit_bytes" in execution:
+        limit = execution["output_limit_bytes"]
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not MIN_OUTPUT_LIMIT <= limit <= MAX_OUTPUT_LIMIT
+        ):
+            raise _fail("descriptor.execution.output_limit_bytes is out of range")
     timeout = execution["timeout_seconds"]
     if (
         not isinstance(timeout, float)

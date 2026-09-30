@@ -20,6 +20,11 @@ from typing import Any
 from charter_replay import cli as kernel
 from charter_replay.hook_context import HOOK_CONTEXT_VERSION
 from charter_replay.hooks import ASK_EFFECTS, RUNTIMES, HookSpec, HookSpecError
+from charter_replay.hooks import (
+    DEFAULT_OUTPUT_LIMIT,
+    MAX_OUTPUT_LIMIT,
+    MIN_OUTPUT_LIMIT,
+)
 from charter_replay.hooks import parse_hook_command, record_hook
 from charter_replay.policy_sources import SourceFailure
 from charter_replay.publication import PublicationError
@@ -53,6 +58,18 @@ def _positive_jobs(value: str) -> int:
     return jobs
 
 
+def _output_limit(value: str) -> int:
+    message = (
+        f"output limit must be from {MIN_OUTPUT_LIMIT} to {MAX_OUTPUT_LIMIT} bytes"
+    )
+    if not (value.isascii() and value.isdecimal()):
+        raise argparse.ArgumentTypeError(message)
+    limit = int(value)
+    if not MIN_OUTPUT_LIMIT <= limit <= MAX_OUTPUT_LIMIT:
+        raise argparse.ArgumentTypeError(message)
+    return limit
+
+
 def _repeats(value: str) -> int:
     try:
         return parse_repeats(value)
@@ -80,6 +97,16 @@ def _add_hook_options(parser: argparse.ArgumentParser) -> None:
         type=kernel._parse_timeout,
         default=10.0,
         help="seconds per hook invocation (default: 10)",
+    )
+    parser.add_argument(
+        "--hook-output-limit",
+        type=_output_limit,
+        default=DEFAULT_OUTPUT_LIMIT,
+        metavar="BYTES",
+        help=(
+            "most bytes a hook may print to each of stdout and stderr, "
+            f"{MIN_OUTPUT_LIMIT} to {MAX_OUTPUT_LIMIT} (default: {DEFAULT_OUTPUT_LIMIT})"
+        ),
     )
     parser.add_argument(
         "--jobs", type=_positive_jobs, default=4, help="parallel invocations"
@@ -160,6 +187,7 @@ def _spec(args: argparse.Namespace, command: str) -> HookSpec:
         runtime=args.runtime,
         timeout=args.hook_timeout,
         ask_effect=args.ask_as,
+        output_limit=args.hook_output_limit,
     )
 
 

@@ -3,7 +3,9 @@
 `hooks` validates both hook commands, both workspace arguments, the comparison
 gate, the timeout and the worker count before invoking either hook. Timeout must
 be finite, greater than zero and at most 86400 seconds. Jobs must be positive.
-JSON argv must not contain NUL bytes. The same validated corpus capture supplies
+JSON argv must not contain NUL bytes. `--hook-output-limit` must be an integer
+from 1024 to 67108864 (bytes per stream); anything else exits 2 before a hook
+runs. The same validated corpus capture supplies
 both hook invocations and the final comparison, even if on-disk corpus files
 change during invocation. The report binds the bytes the hooks actually saw,
 not a second read. A caller-selected hook is still an
@@ -11,7 +13,7 @@ unsandboxed executable; corpus commands remain input data and never execute.
 
 ## Exit-code precedence
 
-A hook's crash, timeout, invalid output or inability to start has an
+A hook's crash, timeout, output-limit overflow, invalid output or inability to start has an
 indeterminate effect and is also an explicit source failure. Identical failures
 on both sides are not a healthy unchanged comparison. The kernel report and
 hook summary share the same error gate and source failures.
@@ -59,6 +61,44 @@ The JSON report stays free of machine-local reproduction paths. The existing
 kernel Markdown includes local reproduction argv, and legacy report timestamps
 still require `SOURCE_DATE_EPOCH` for byte-identical reruns. Timing remains an
 observation, not part of decision identity.
+
+## Output limit
+
+Each hook invocation may print at most `--hook-output-limit` bytes to each of
+stdout and stderr (default 1 MiB, accepted range 1 KiB to 64 MiB, on `record`,
+`hooks` and `repeat`). The two streams are counted separately. Output of exactly
+the limit is normal; one byte more is an overflow.
+
+While the hook runs, both temporary output files are sized about every 25 ms.
+The first time either is over the limit, the runner kills the whole process
+family through the same path a timeout uses (the POSIX process group, or the
+Windows Job Object), so a descendant that keeps printing after its parent exits
+is stopped too. The outcome is `output-limit`: indeterminate, a source failure
+(`hook-output-limit`, exit 3) and, like a timeout, no exit code. The reason
+names the stream and the limit (`output-limit: stdout exceeded 1048576 bytes`),
+never the output. If the hook had already exited when its files were sized, an
+overflow still counts, and it takes precedence over a timeout that ran out in the
+same moment. Reads are bounded to the limit plus one byte, so an oversized
+stream is detected without ever being read whole into memory.
+
+Limits, stated plainly:
+
+- The limit bounds what is kept, not what is written before the kill. A hook can
+  write for up to one polling interval past the limit, so peak temporary disk per
+  stream is the limit plus what a process can write in about 25 ms, more under
+  heavy load. `--jobs` multiplies that.
+- A descendant that left the family (POSIX `setpgrp`/`setsid`, or a Windows
+  process that escaped its job) is not killed; the bounded read still protects
+  memory.
+- The elapsed time of an `output-limit` invocation is a censored observation
+  like a timeout: the time to reach the limit, not the hook's latency. It counts
+  as a latency sample.
+- The kernel `replay` command's `process:` sources take no limit and behave as
+  before.
+
+The limit is an execution setting and is recorded in `hook-context.json`
+(`execution.output_limit_bytes`), so a different limit is a different context.
+See [HOOK-CONTEXT.md](HOOK-CONTEXT.md).
 
 ## Event workspace isolation
 
