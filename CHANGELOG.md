@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `repeat` records one hook N times (2 to 50) over the same corpus and classifies each
+  event as `stable`, `reason-varies`, `outcome-varies` or `effect-varies`, keyed by the
+  hook context ID. It writes `stability.json` (`repeat-stability.v1`, no timing),
+  `stability.md` and `measurements.json` into a new output directory, exits 1 for a
+  class named by `--fail-on` and 3 for any source failure. See
+  `docs/REPEAT-STABILITY.md`.
 - `record` and `hooks` write `hook-context.json`: a versioned (`hook-context.v1`),
   input-only descriptor and SHA-256 context ID covering adapter, ask mapping,
   timeout and jobs, hook executable and argv file bytes, the workspace template
