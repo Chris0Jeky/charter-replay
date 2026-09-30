@@ -16,6 +16,16 @@
   rename on `PermissionError` and, if it stays locked, keeps the recordings in a
   hidden `.charter-repeat-*` directory (exit 3). A stdout that cannot encode the
   summary (a Windows cp1252 pipe) no longer changes the exit code.
+- **New runtime `gemini`** (`--runtime gemini`, contract `gemini-beforetool.v1`), the
+  third adapter, built from the Gemini CLI hooks documentation and the upstream
+  hook runner (pinned in `docs/RUNTIME_CONTRACTS.md`). The payload is a `BeforeTool`
+  event for `run_shell_command`; `decision` deny/block and exit 2 deny,
+  `continue: false` is `stop`, and other exits, non-JSON stdout, `tool_input`
+  rewrites, `ask`, unknown fields, duplicate keys and BOM-prefixed replies are
+  indeterminate. The hook gets `GEMINI_PROJECT_DIR`, `GEMINI_SESSION_ID` and
+  `CLAUDE_PROJECT_DIR`. A documentation- and source-derived model, not a
+  certification. The Claude, `codex` and `codex-legacy` contracts are unchanged.
+  The Action's `runtime` input accepts `gemini`.
 - **Migration: `--runtime codex` changed.** It now selects the new
   `codex-pretooluse.v1` contract, built from the current Codex hooks documentation.
   Replies Codex documents as unsupported (`ask`, legacy `approve`, `continue:
