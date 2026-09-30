@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import stat
 import sys
 from typing import Any
 
@@ -20,11 +21,18 @@ from charter_replay.hooks import parse_hook_command, record_hook
 from charter_replay.policy_sources import SourceFailure
 from charter_replay.metrics import render_label_summary, score_labels
 
-from charter_replay.review_reports import markdown_literal
+from charter_replay.review_reports import REPORT_FILES, markdown_literal
 
 PROG = "charter-replay"
 SUMMARY_JSON = "summary.json"
 SUMMARY_MD = "summary.md"
+# What one recording side writes into `--output/<side>`.
+RECORDING_FILES = (
+    "decisions.jsonl",
+    "decisions.jsonl.manifest.json",
+    "outcomes.jsonl",
+    "measurements.json",
+)
 
 
 def _positive_jobs(value: str) -> int:
@@ -216,6 +224,56 @@ def render_summary(summary: dict[str, Any], outcomes: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _is_link(path: Path) -> bool:
+    metadata = path.lstat()
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    )
+
+
+def _derived_artifacts(output: Path) -> list[Path]:
+    """Name what an earlier run may have left in `output`, never following links."""
+
+    targets = [output / SUMMARY_JSON, output / SUMMARY_MD]
+    for directory, names in (
+        (output / "report", REPORT_FILES),
+        (output / "baseline", RECORDING_FILES),
+        (output / "candidate", RECORDING_FILES),
+    ):
+        try:
+            if _is_link(directory):
+                raise kernel.ReplayInputError(
+                    f"output subdirectory {directory.name!r} is a link"
+                )
+        except FileNotFoundError:
+            continue
+        targets.extend(directory / name for name in names)
+    return targets
+
+
+def _remove_stale_outputs(output: Path) -> None:
+    """Delete previous derived files so a failed rerun cannot look current.
+
+    Only regular files with these exact names are removed. Anything else that
+    occupies a derived name (a link, a directory) is refused before any removal.
+    """
+
+    existing = []
+    for target in _derived_artifacts(output):
+        try:
+            metadata = target.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(metadata.st_mode):
+            raise kernel.ReplayInputError(
+                f"output entry {target.name!r} is not a regular file"
+            )
+        existing.append(target)
+    for target in existing:
+        target.unlink(missing_ok=True)
+
+
 def _run_hooks(args: argparse.Namespace) -> int:
     corpus = kernel._load_charter_corpus(args.corpus)
     events = corpus.events
@@ -244,6 +302,9 @@ def _run_hooks(args: argparse.Namespace) -> int:
             args.fail_on,
         ]
     )
+    # Both sides are admitted. Anything a previous run left is now removed, so a
+    # failure while recording cannot leave earlier results looking current.
+    _remove_stale_outputs(output)
     outcomes: dict[str, Any] = {}
     for name, spec, workspace in sides:
         outcomes[name] = record_hook(
@@ -254,10 +315,6 @@ def _run_hooks(args: argparse.Namespace) -> int:
             workspace_template=workspace,
             jobs=args.jobs,
         )
-    # A report left by an earlier run must not be summarised as this one.
-    for stale in (output / "report" / "report.json", output / SUMMARY_JSON):
-        stale.unlink(missing_ok=True)
-    (output / SUMMARY_MD).unlink(missing_ok=True)
     code = kernel._run_replay(
         replay_args,
         captured_corpus=corpus,
