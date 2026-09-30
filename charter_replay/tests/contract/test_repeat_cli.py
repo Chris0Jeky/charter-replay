@@ -292,6 +292,20 @@ class RepeatCliTests(unittest.TestCase):
         self.assertNotIn(str(self.root), error)
         self.assertEqual([p.name for p in self.parent.iterdir()], ["repeat"])
 
+    def test_output_inside_the_workspace_template_is_refused_before_any_hook(self):
+        # Staging beside the output would leak earlier repeats into later ones.
+        code, _, error = self.run_repeat(
+            self.hook("deterministic"),
+            "--repeats",
+            "2",
+            "--workspace",
+            str(self.parent),
+        )
+        self.assertEqual(code, 2)
+        self.assertFalse(self.counter.exists(), "no hook process was started")
+        self.assertEqual(list(self.parent.iterdir()), [])
+        self.assertNotIn(str(self.root), error)
+
     def test_existing_output_file_is_refused(self):
         self.output.write_text("a file", encoding="utf-8")
         code, _, _ = self.run_repeat(self.hook("deterministic"), "--repeats", "2")

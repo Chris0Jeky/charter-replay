@@ -368,6 +368,12 @@ def run_repeat(
     repeats = parse_repeats(repeats)
     fail_on = parse_fail_on(",".join(fail_on))
     target = new_destination(output)
+    if workspace_template is not None and target.parent.is_relative_to(
+        workspace_template.resolve()
+    ):
+        # Staging sits beside the target, so every later repeat's workspace
+        # would copy the earlier repeats' recordings and read as variation.
+        raise RepeatInputError("output must be outside the workspace template")
     staging = Path(tempfile.mkdtemp(prefix=".charter-repeat-", dir=target.parent))
     published = False
     try:
