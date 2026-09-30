@@ -30,6 +30,11 @@ Unchanged hook inputs keep the same `policy_commit` value. That field still hold
 the first 40 hexadecimal characters of the legacy fingerprint, not a Git commit.
 New failure messages and codes use fixed text and reveal no input path.
 
+The final observation reuses the initial classification of each argument. An
+argument that was a plain word stays a word, so an output path the hook creates,
+such as `--log /tmp/out.json`, is not reported as a changed input. An argument
+that was a file and has vanished still changes the fingerprint.
+
 ## Evidence and limits
 
 These are two observations of the existing argv/file fingerprint, not an immutable
