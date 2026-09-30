@@ -20,15 +20,17 @@ Merged to `main`. The PR is the evidence; its review record and exact-head CI ar
 | R02-5 | done | #12 offline HTML and bounded PR text; #17 verified variant review |
 | R02-6 | done | #14 bounded POSIX variants; #15 seed and shape coverage |
 | R03-1 | done | #29 least-privilege composite Action with a three-OS self-test |
-| R03-2 | partial | the aggregate PR text exists (`pr-comment-aggregate.md`); verified aggregate-only publication is open |
+| R03-2 | done | #39 `aggregate.v1` with a fail-closed leak check, an `aggregate` command and Action `summary-mode: aggregate` |
 | R03-3 | done | #31 `codex-pretooluse.v1`, with the v0.1 floor kept as `codex-legacy` |
-| R03-4 | in progress | #32 Gemini BeforeTool adapter |
+| R03-4 | done | #35 `gemini-beforetool.v1` |
 | R04-1 | first increment | #20 bracketed input observations; #23 `hook-context.v1` descriptor. Executable dependencies, helper imports, permissions and environment values are declared unbound, not bound |
 | R04-3 | done | #25 repeat-stability mode keyed by context id |
+| R08-2 | first increment | #37 per-stream hook output limit that kills the process family on overflow. Adversarial long-input and disk-budget work remains |
 
-Review follow-ups: #26 (merged), plus the #28 LOW items. Acceptance CI covers
-browser and installed-wheel review (#18). Everything from R04-2 onward is still
-planned.
+Review follow-ups landed as #26 and #36. Acceptance CI covers browser and
+installed-wheel review (#18) and a three-OS Action self-test (#29). Still planned:
+R04-2, R05-x (R05-2 needs real independent human review), R06-x, R07-x and
+R08-1. None of the runtime contracts is certified against a running binary.
 
 ## v0.2: Trustworthy and reviewable shell diffs
 

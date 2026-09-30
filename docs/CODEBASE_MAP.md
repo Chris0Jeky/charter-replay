@@ -108,8 +108,9 @@ in the roadmap and individual PR evidence.
 1. Failure evidence: fixed by #9. Hook failures are source failures, both-side
    failures cannot pass, and both sides are admitted before either runs.
 2. Runtime fidelity: `codex-pretooluse.v1` (#31) models current Codex documentation
-   and upstream parsing, with the old floor kept as `codex-legacy`. A Gemini adapter
-   is in progress (#32). None of these is certified against a running binary.
+   and upstream parsing, with the old floor kept as `codex-legacy`, and
+   `gemini-beforetool.v1` (#35) models Gemini CLI. None of these is certified
+   against a running binary.
 3. Hook identity: the fingerprint is taken before execution and re-checked (#20).
    `hook-context.v1` (#23) binds executable bytes, runtime, ask mapping, timeout,
    jobs and the workspace template, and declares the rest unbound.
@@ -123,11 +124,11 @@ in the roadmap and individual PR evidence.
    free-text field (#12). The kernel `report.md` escapes only HTML and table pipes.
    By default the PR text omits commands and reasons but still lists up to 20
    changed case identifiers. Only `pr-comment-aggregate.md` omits case and policy
-   identifiers. Verified aggregate-only publication for private corpora is still
-   open (R03-2).
+   identifiers. `aggregate.v1` (#39) adds a verified, fixed-vocabulary aggregate
+   with a fail-closed leak check, which the Action can use as its job summary.
 7. Process module: not yet split (R04-2).
 
 New modules since the baseline: `adapters/` (runtime contracts), `hook_context.py`,
-`repeat.py`, `metrics.py`, `review_reports.py`, `publication.py`, `variants*.py`,
+`repeat.py`, `aggregate.py`, `metrics.py`, `review_reports.py`, `publication.py`, `variants*.py`,
 `variant_packs.py`, `variant_coverage.py`, `variant_review*.py`, and the composite
 `action.yml`.
