@@ -25,7 +25,7 @@ source that the kernel `replay` command accepts as `recorded:<path>`.
 
 Each hook runs once per command, as the runtime runs it: shell-free argv, the
 PreToolUse JSON on stdin, `cwd` inside a fresh workspace (optionally copied
-from `--workspace`), and `CLAUDE_PROJECT_DIR` set to that workspace. A hook
+from `--workspace`), and `CLAUDE_PROJECT_DIR` set to that workspace (not under `--runtime codex`). A hook
 command is a JSON array or POSIX-quoted words. On Windows, `py -3` works as the
 interpreter and forward slashes avoid quoting trouble.
 
@@ -53,9 +53,21 @@ ID; see [docs/REPEAT-STABILITY.md](docs/REPEAT-STABILITY.md).
 The outcome is the prefix of each recorded reason, and `outcomes.jsonl` keeps
 the exit code and latency per event. The runtime itself lets a command proceed
 after a crash or timeout; indeterminate keeps those visible instead. With
-`--runtime codex`, `ask` becomes deny, because Codex has no ask decision; the
-payload is the same PreToolUse shape, which is only verified against hooks that
-accept both runtimes.
+`--runtime codex-legacy`, `ask` becomes deny, the v0.1 floor kept so old
+recordings reproduce; it is not fail-safe, because Codex fails the hook and lets
+the call continue.
+
+`--runtime codex` is the versioned `codex-pretooluse.v1` contract, modelled on
+the Codex hooks documentation (not certified against a running Codex). Its payload
+adds `turn_id` and a null `transcript_path`, and no `CLAUDE_PROJECT_DIR` is set.
+Replies Codex documents as unsupported (`ask`, legacy `approve`, `continue:
+false`, `stopReason`, `suppressOutput`), malformed or unknown-field JSON, an
+`allow` (which Codex supports only with an `updatedInput` rewrite) and exit 2
+without a stderr reason are `invalid-output` and indeterminate, so the runtime's
+fail-open shows up as exit 3 rather than as a block. `--ask-as` has no effect
+under `codex`, since `ask` is not a decision there. The context id in
+`hook-context.json` differs between the two runtimes. Reply table and sources:
+[docs/RUNTIME_CONTRACTS.md](docs/RUNTIME_CONTRACTS.md).
 
 `charter-replay import` builds a private corpus from local Claude Code and
 Codex transcripts. It scrubs credentials, home paths, the local user, host and
