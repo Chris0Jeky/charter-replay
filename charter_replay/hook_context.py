@@ -97,6 +97,12 @@ def _reduced(word: str) -> str:
     # `--flag=a/b` values also contain slashes and must be hashed in full, or
     # two different policies could share an identity. The basename follows the
     # path's own flavour: a POSIX host does not split `C:\one\out.json`.
+    # A word with whitespace is never reduced: a regex like `/rm -rf/` is
+    # POSIX-absolute too. A real path argument containing a space is rare in
+    # hook argv, and hashing it whole costs portability across machines, never
+    # correctness (two different inputs cannot share an identity).
+    if any(character.isspace() for character in word):
+        return word
     if PureWindowsPath(word).is_absolute():
         return PureWindowsPath(word).name
     if PurePosixPath(word).is_absolute():
@@ -193,11 +199,16 @@ def _template(root: Path, output: Path | None = None) -> dict[str, Any]:
         if _contains(root, output):
             return unbound("contains-output")
         stack = [("", os.path.realpath(root), frozenset())]
+        output_real = None if output is None else Path(os.path.realpath(output))
         # Walk and stat first: nothing is read until both limits are known to hold.
         while stack:
             prefix, real, ancestors = stack.pop()
             if real in ancestors:
                 return unbound("unreadable")
+            # A link inside the template can lead to a directory that holds the
+            # output; the copy follows links, so it would copy the recordings.
+            if output_real is not None and output_real.is_relative_to(real):
+                return unbound("contains-output")
             ancestors = ancestors | {real}
             found = []
             with os.scandir(root / prefix if prefix else root) as scan:

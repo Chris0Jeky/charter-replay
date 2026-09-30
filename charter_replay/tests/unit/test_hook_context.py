@@ -17,6 +17,22 @@ from charter_replay.adapters import RUNTIMES, get_adapter
 from charter_replay.hooks import HookSpec
 
 
+def link_directory(case: unittest.TestCase, link: Path, target: Path) -> None:
+    """Make `link` lead to `target`: a symlink, or a junction on Windows."""
+
+    try:
+        link.symlink_to(target, target_is_directory=True)
+        return
+    except (OSError, NotImplementedError):
+        pass
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+        return
+    case.skipTest("directory links are unavailable")
+
+
 class DescriptorTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -264,6 +280,23 @@ class DescriptorTests(unittest.TestCase):
                     self.identity(self.spec(sys.executable, "--log", second)),
                 )
 
+    def test_absolute_looking_words_with_whitespace_are_hashed_whole(self):
+        # `/rm -rf/x/` is a regex, not a path; reducing it to `x` would let two
+        # different patterns share an identity.
+        pairs = [
+            ("/rm -rf/x", "/curl -s/x"),
+            ("/a b/", "/c d/"),
+            ("C:\\one two\\out.json", "D:\\three four\\out.json"),
+            ("/one\tdir/out.json", "/two\tdir/out.json"),
+        ]
+        for first, second in pairs:
+            with self.subTest(first=first):
+                self.assertEqual(hc._reduced(first), first)
+                self.assertNotEqual(
+                    self.identity(self.spec(sys.executable, "--match", first)),
+                    self.identity(self.spec(sys.executable, "--match", second)),
+                )
+
     def test_absolute_paths_reduce_by_their_own_flavour_on_any_host(self):
         # Pure-path logic, so a Windows host exercises the POSIX case and back.
         self.assertEqual(hc._reduced("C:\\one\\out.json"), "out.json")
@@ -313,6 +346,27 @@ class DescriptorTests(unittest.TestCase):
             self.describe(template=self.template, output=outside)["workspace_template"][
                 "status"
             ],
+            "bound",
+        )
+
+    def test_template_directory_link_leading_to_the_output_is_unbound(self):
+        shared = self.root / "shared"
+        shared.mkdir()
+        link_directory(self, self.template / "link", shared)
+        output = shared / "runs" / "x"
+        descriptor = self.describe(template=self.template, output=output)
+        self.assertEqual(
+            descriptor["workspace_template"],
+            {"status": "unbound", "reason": "contains-output"},
+        )
+        self.assertIn("workspace-template", descriptor["unbound"])
+        hc.validate_hook_context(hc.context_document(descriptor))
+        # An output outside every linked directory leaves the template bound.
+        elsewhere = self.root / "elsewhere" / "x"
+        self.assertEqual(
+            self.describe(template=self.template, output=elsewhere)[
+                "workspace_template"
+            ]["status"],
             "bound",
         )
 
