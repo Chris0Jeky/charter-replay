@@ -54,7 +54,13 @@ def forbid_process_launch() -> Iterator[None]:
                     subprocess, name, side_effect=_launch(f"subprocess.{name}")
                 )
             )
-        # The primitives the standard library's own process start ends in.
+        # Lower-level primitives, as defence in depth behind the entry points
+        # above. `_winapi.CreateProcess` is the Windows process start. On
+        # Python 3.12+ POSIX, `subprocess` binds `_fork_exec` when it is
+        # imported, so patching `_posixsubprocess.fork_exec` here does not
+        # intercept it. That is not a false green: `subprocess.Popen` is
+        # patched above (every `subprocess` entry point ends in it) and the
+        # `os` launchers are patched separately.
         for module_name, attribute in (
             ("_winapi", "CreateProcess"),
             ("_posixsubprocess", "fork_exec"),
