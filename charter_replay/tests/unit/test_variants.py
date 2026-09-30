@@ -5,6 +5,7 @@ from copy import deepcopy
 import importlib
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import tempfile
@@ -14,6 +15,7 @@ from unittest import mock
 from charter_replay import app, cli
 from charter_replay.digests import sha256_bytes
 from charter_replay.manifests import build_corpus_manifest, manifest_json_bytes
+from charter_replay.tests.no_launch import forbid_process_launch
 
 DOMAIN = "posix-external.v1"
 CORE = Path(__file__).resolve().parents[2] / "corpora" / "charter"
@@ -288,19 +290,22 @@ class PackTests(unittest.TestCase):
 
     def test_never_executes_a_corpus_command_or_launches_a_process(self):
         # This is data for the hook, not an instruction for a shell or Python.
-        target = self.root / "executed"
-        command = 'python -c "open(' + repr(str(target)) + ", 'w').close()\""
+        # The payload names no host path (a Windows path's backslashes would make
+        # the generator skip the seed, leaving nothing to prove). If it ran, it
+        # would create `executed-marker` in the working directory.
+        command = "python -c \"open('executed-marker', 'w').close()\""
         shutil.rmtree(self.source)
         write_source(self.source, [(command, "dangerous")])
-        with (
-            mock.patch(
-                "subprocess.Popen", side_effect=AssertionError("process launch")
-            ),
-            mock.patch("os.system", side_effect=AssertionError("shell launch")),
-        ):
-            self.generate()
+        previous = os.getcwd()
+        os.chdir(self.root)
+        self.addCleanup(os.chdir, previous)
+        with forbid_process_launch():
+            lineage = self.generate()
             self.module().verify_pack(self.source, self.output)
-        self.assertFalse((self.root / "executed").exists())
+        # The seed was admitted and derived, so the guard had something to guard.
+        self.assertEqual(lineage["counts"], {"seeds": 1, "derived": 3, "skipped": 0})
+        self.assertFalse((self.root / "executed-marker").exists())
+        self.assertFalse(Path("executed-marker").exists())
 
     def test_preexisting_empty_nonempty_and_symlink_outputs_are_not_replaced(self):
         module = self.module()

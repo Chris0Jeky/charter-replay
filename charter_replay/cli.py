@@ -642,6 +642,13 @@ def _run_replay(
         return EXIT_SOURCE_FAILED
 
     if baseline_failures or candidate_failures:
+        # Distinct from "replay output failed": the reports above were written.
+        print(
+            "replay gate error: source failures were recorded "
+            f"(baseline {len(baseline_failures)}, candidate {len(candidate_failures)}); "
+            "the report was published",
+            file=sys.stderr,
+        )
         return EXIT_SOURCE_FAILED
     if report["gate"]["triggered"]:
         return EXIT_REGRESSION

@@ -2,7 +2,8 @@
 
 `replay` and `validate` are the unchanged replay v0 kernel commands. `record`
 runs one hook over a corpus and writes a recorded decision source; `hooks`
-records two hooks and compares them through the kernel; `import` builds a
+records two hooks and compares them through the kernel; `repeat` records one
+hook several times and classifies how its decisions vary; `import` builds a
 private local corpus from agent transcripts.
 """
 
@@ -11,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import stat
 import sys
 from typing import Any
 
@@ -20,12 +22,23 @@ from charter_replay.hooks import ASK_EFFECTS, RUNTIMES, HookSpec, HookSpecError
 from charter_replay.hooks import parse_hook_command, record_hook
 from charter_replay.policy_sources import SourceFailure
 from charter_replay.metrics import render_label_summary, score_labels
+from charter_replay.repeat import DEFAULT_FAIL_ON, MAX_REPEATS, MIN_REPEATS
+from charter_replay.repeat import RepeatInputError, parse_fail_on, parse_repeats
+from charter_replay.repeat import render_markdown, run_repeat
 
-from charter_replay.review_reports import markdown_literal
+from charter_replay.review_reports import REPORT_FILES, markdown_literal
 
 PROG = "charter-replay"
 SUMMARY_JSON = "summary.json"
 SUMMARY_MD = "summary.md"
+# What one recording side writes into `--output/<side>`.
+RECORDING_FILES = (
+    "decisions.jsonl",
+    "decisions.jsonl.manifest.json",
+    "outcomes.jsonl",
+    "measurements.json",
+    "hook-context.json",
+)
 
 
 def _positive_jobs(value: str) -> int:
@@ -36,6 +49,20 @@ def _positive_jobs(value: str) -> int:
     if jobs < 1:
         raise argparse.ArgumentTypeError("jobs must be a positive integer")
     return jobs
+
+
+def _repeats(value: str) -> int:
+    try:
+        return parse_repeats(value)
+    except RepeatInputError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _repeat_fail_on(value: str) -> tuple[str, ...]:
+    try:
+        return parse_fail_on(value)
+    except RepeatInputError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def _add_hook_options(parser: argparse.ArgumentParser) -> None:
@@ -84,6 +111,25 @@ def _parser() -> argparse.ArgumentParser:
     )
     hooks.add_argument("--fail-on", default=",".join(kernel.DEFAULT_FAIL_ON))
     _add_hook_options(hooks)
+
+    repeat = sub.add_parser("repeat", help="measure one hook's variation over repeats")
+    repeat.add_argument("--hook", required=True, help="hook command (words or JSON)")
+    repeat.add_argument("--corpus", required=True)
+    repeat.add_argument("--output", required=True, help="must not exist")
+    repeat.add_argument(
+        "--repeats",
+        required=True,
+        type=_repeats,
+        help=f"recordings to make, {MIN_REPEATS} to {MAX_REPEATS}",
+    )
+    repeat.add_argument("--workspace", help="template directory for the hook's cwd")
+    repeat.add_argument(
+        "--fail-on",
+        type=_repeat_fail_on,
+        default=DEFAULT_FAIL_ON,
+        help="comma-separated classes that exit 1 (default: effect-varies)",
+    )
+    _add_hook_options(repeat)
 
     importer = sub.add_parser("import", help="build a private corpus from transcripts")
     importer.add_argument("--claude-root", help="default: ~/.claude/projects")
@@ -135,7 +181,34 @@ def _run_record(args: argparse.Namespace) -> int:
         jobs=args.jobs,
     )
     print(json.dumps(summary, sort_keys=True))
-    return kernel.EXIT_SOURCE_FAILED if summary["failures"] else kernel.EXIT_OK
+    if summary["failures"]:
+        # Distinct from "output failed": the recording itself was written.
+        print(
+            f"{PROG}: gate error: {len(summary['failures'])} hook failure(s) "
+            "were recorded; the decisions were written",
+            file=sys.stderr,
+        )
+        return kernel.EXIT_SOURCE_FAILED
+    return kernel.EXIT_OK
+
+
+def _run_repeat(args: argparse.Namespace) -> int:
+    # Admit the corpus and the hook before anything runs; run_repeat then checks
+    # the output path, still before the first hook starts.
+    events = _load_events(args.corpus)
+    spec = _spec(args, args.hook)
+    workspace = _optional_path(args.workspace)
+    document, code = run_repeat(
+        spec,
+        events,
+        Path(args.output),
+        repeats=args.repeats,
+        workspace_template=workspace,
+        jobs=args.jobs,
+        fail_on=args.fail_on,
+    )
+    print(render_markdown(document))
+    return code
 
 
 def breakdown(report: dict[str, Any]) -> dict[str, Any]:
@@ -225,6 +298,69 @@ def render_summary(summary: dict[str, Any], outcomes: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# Symbolic links and junctions redirect; other reparse points (OneDrive
+# cloud placeholders, dedup) are ordinary directories for this purpose.
+_LINK_REPARSE_TAGS = frozenset(
+    getattr(stat, name)
+    for name in ("IO_REPARSE_TAG_SYMLINK", "IO_REPARSE_TAG_MOUNT_POINT")
+    if hasattr(stat, name)
+)
+
+
+def _is_link(path: Path) -> bool:
+    metadata = path.lstat()
+    if stat.S_ISLNK(metadata.st_mode):
+        return True
+    reparse = getattr(metadata, "st_file_attributes", 0) & getattr(
+        stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0
+    )
+    return bool(reparse) and getattr(metadata, "st_reparse_tag", 0) in (
+        _LINK_REPARSE_TAGS
+    )
+
+
+def _derived_artifacts(output: Path) -> list[Path]:
+    """Name what an earlier run may have left in `output`, never following links."""
+
+    targets = [output / SUMMARY_JSON, output / SUMMARY_MD]
+    for directory, names in (
+        (output / "report", REPORT_FILES),
+        (output / "baseline", RECORDING_FILES),
+        (output / "candidate", RECORDING_FILES),
+    ):
+        try:
+            if _is_link(directory):
+                raise kernel.ReplayInputError(
+                    f"output subdirectory {directory.name!r} is a link"
+                )
+        except FileNotFoundError:
+            continue
+        targets.extend(directory / name for name in names)
+    return targets
+
+
+def _remove_stale_outputs(output: Path) -> None:
+    """Delete previous derived files so a failed rerun cannot look current.
+
+    Only regular files with these exact names are removed. Anything else that
+    occupies a derived name (a link, a directory) is refused before any removal.
+    """
+
+    existing = []
+    for target in _derived_artifacts(output):
+        try:
+            metadata = target.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(metadata.st_mode):
+            raise kernel.ReplayInputError(
+                f"output entry {target.name!r} is not a regular file"
+            )
+        existing.append(target)
+    for target in existing:
+        target.unlink(missing_ok=True)
+
+
 def _run_hooks(args: argparse.Namespace) -> int:
     corpus = kernel._load_charter_corpus(args.corpus)
     events = corpus.events
@@ -253,6 +389,9 @@ def _run_hooks(args: argparse.Namespace) -> int:
             args.fail_on,
         ]
     )
+    # Both sides are admitted. Anything a previous run left is now removed, so a
+    # failure while recording cannot leave earlier results looking current.
+    _remove_stale_outputs(output)
     outcomes: dict[str, Any] = {}
     for name, spec, workspace in sides:
         outcomes[name] = record_hook(
@@ -263,10 +402,6 @@ def _run_hooks(args: argparse.Namespace) -> int:
             workspace_template=workspace,
             jobs=args.jobs,
         )
-    # A report left by an earlier run must not be summarised as this one.
-    for stale in (output / "report" / "report.json", output / SUMMARY_JSON):
-        stale.unlink(missing_ok=True)
-    (output / SUMMARY_MD).unlink(missing_ok=True)
     code = kernel._run_replay(
         replay_args,
         captured_corpus=corpus,
@@ -316,6 +451,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_record(args)
         if args.command == "hooks":
             return _run_hooks(args)
+        if args.command == "repeat":
+            return _run_repeat(args)
         return _run_import(args)
     except (HookSpecError, kernel.ReplayInputError, ValueError) as exc:
         print(f"{PROG}: {exc}", file=sys.stderr)

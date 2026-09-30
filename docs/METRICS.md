@@ -49,8 +49,10 @@ For example, samples 1 through 20 have p50 10, p95 19 and maximum 20. No started
 samples gives null percentiles. The clock is the existing monotonic process
 observation; workspace preparation and final workspace cleanup are excluded.
 Timeout observations are censored: they show how long the runner waited, not
-when that hook would have finished. Start failures are excluded from latency
-percentiles but counted. Different worker counts or machines are not directly
+when that hook would have finished. They are still samples, so p50, p95 and max
+include them and are lower bounds on the true latency whenever the timeout
+count is above zero. Start failures are excluded from latency percentiles but
+counted. Different worker counts or machines are not directly
 comparable. No new latency threshold changes the regression gate.
 
 `measurements.json` contains aggregates, not event IDs, commands or reasons.

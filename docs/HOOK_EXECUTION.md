@@ -21,6 +21,18 @@ hook summary share the same error gate and source failures.
 - 2: invalid input or broken exact-byte binding.
 - 3: hook/source failure after usable decisions can be formed, or report output failure.
 
+Exit 3 has two causes that stderr tells apart: `replay gate error` (or
+`gate error` for `record`) means failures were recorded and the outputs were
+written; `output failed` means an output could not be written or published.
+
+`hooks` removes the previous run's derived files from `--output` (`baseline/`,
+`candidate/`, `report/`, `summary.json`, `summary.md`) once both sides are
+admitted and before any hook runs, so a failed rerun cannot leave earlier
+results looking current. Only regular files with those exact names are
+removed; a link or directory on one of those names, or a linked `report/`,
+`baseline/` or `candidate/`, is refused with exit 2 before anything is
+deleted.
+
 Exit 3 takes precedence over exit 1. A hook's exit 2 is a deny decision, not a
 process failure. An ask mapped to indeterminate by `--ask-as` is not itself a
 process failure; it remains a configured policy mapping and can trigger exit 1.

@@ -14,6 +14,7 @@ from charter_replay import app, cli
 from charter_replay.compare import compare_decisions
 from charter_replay.manifests import build_run_manifest
 from charter_replay.reports import build_json_report
+from charter_replay.tests.no_launch import forbid_process_launch
 from charter_replay.tests.unit.test_variants import DOMAIN, write_source
 from charter_replay.variant_packs import generate_pack
 
@@ -231,7 +232,7 @@ class VariantCoverageTests(unittest.TestCase):
                 self.coverage()
 
     def test_coverage_never_launches_a_process(self):
-        with mock.patch("subprocess.Popen", side_effect=AssertionError("launch")):
+        with forbid_process_launch():
             self.coverage()
 
     def test_no_supported_shapes_still_reports_every_seed_and_skip(self):
