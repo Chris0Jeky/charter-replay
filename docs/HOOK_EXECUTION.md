@@ -32,7 +32,8 @@ results looking current. Only regular files with those exact names are
 removed; a link or directory on one of those names, or a linked `report/`,
 `baseline/` or `candidate/`, is refused with exit 2 before anything is
 deleted. Each subdirectory is checked again immediately before every removal,
-so one swapped for a link after the first check is not followed. A file that
+which narrows, but cannot close, the window in which a concurrent writer could
+swap it for a link. A file that
 cannot be removed (for example one a process holds open) does not stop the
 others: every removal is attempted, then one `output failed: N stale output
 file(s) could not be removed` error ends the run with exit 3 before any hook
@@ -40,8 +41,9 @@ starts.
 
 `hooks` and `repeat` print their Markdown summary after the outputs are written.
 It goes to stdout as UTF-8 bytes when stdout has a binary layer, otherwise with
-unencodable characters replaced, and a failure to print (a closed pipe) never
-changes the exit code.
+unencodable characters replaced. A failure to print does not change the exit
+code; after a closed pipe, stdout is redirected to the null device so the
+interpreter's final flush cannot fail either.
 
 Exit 3 takes precedence over exit 1. A hook's exit 2 is a deny decision, not a
 process failure. An ask mapped to indeterminate by `--ask-as` is not itself a

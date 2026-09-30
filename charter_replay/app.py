@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import stat
 import sys
@@ -214,6 +215,13 @@ def _emit(text: str) -> None:
             encoding = getattr(stream, "encoding", None) or "utf-8"
             stream.write(data.encode(encoding, "replace").decode(encoding))
             stream.flush()
+    except BrokenPipeError:
+        # Unsent bytes would be flushed again at exit and fail with status 120;
+        # point stdout at the null device so shutdown is quiet and the code holds.
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except (AttributeError, OSError, ValueError):
+            pass
     except (AttributeError, LookupError, OSError, ValueError):
         pass
 

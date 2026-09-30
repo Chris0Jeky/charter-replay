@@ -81,5 +81,29 @@ class HooksExitCodeTests(unittest.TestCase):
         self.assertIn(NON_ASCII.encode("utf-8"), raw.getvalue())
 
 
+@unittest.skipIf(sys.platform == "win32", "POSIX pipe semantics")
+class ClosedPipeTests(unittest.TestCase):
+    def test_closed_pipe_keeps_exit_zero_and_a_quiet_shutdown(self):
+        # A reader that stops early (`| head -1`) must not turn the result into
+        # the interpreter's exit 120 from the final flush.
+        import subprocess
+
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "from charter_replay.app import _emit; _emit('x' * 400000)",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        process.stdout.read(1)
+        process.stdout.close()
+        stderr = process.stderr.read()
+        process.stderr.close()
+        self.assertEqual(process.wait(timeout=30), 0)
+        self.assertNotIn(b"BrokenPipeError", stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
