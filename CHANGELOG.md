@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- `record` and `hooks` write `hook-context.json`: a versioned (`hook-context.v1`),
+  input-only descriptor and SHA-256 context ID covering adapter, ask mapping,
+  timeout and jobs, hook executable and argv file bytes, the workspace template
+  and environment names, with unbound inputs declared. A change during recording
+  fails with `hook-context-changed`. `summary.json` adds `contexts`. See
+  `docs/HOOK-CONTEXT.md`.
+
 ## 0.1.0 (2026-09-29)
 
 First release.

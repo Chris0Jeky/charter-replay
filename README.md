@@ -29,6 +29,10 @@ from `--workspace`), and `CLAUDE_PROJECT_DIR` set to that workspace. A hook
 command is a JSON array or POSIX-quoted words. On Windows, `py -3` works as the
 interpreter and forward slashes avoid quoting trouble.
 
+Each recording also writes `hook-context.json`, an input-only identity for what
+the hook was given (see [docs/HOOK-CONTEXT.md](docs/HOOK-CONTEXT.md)); it is a
+consistency key, not execution authentication.
+
 | hook reply | outcome | replay effect |
 |---|---|---|
 | exit 2 (stderr is the reason) | deny | deny |
