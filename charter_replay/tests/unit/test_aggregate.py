@@ -192,6 +192,117 @@ class BuilderTests(unittest.TestCase):
                         render(broken)
 
 
+class DocumentConsistencyTests(unittest.TestCase):
+    def setUp(self):
+        self.document = aggregate.build_aggregate(build()[0])
+
+    def assert_refused(self, document):
+        for check in (
+            aggregate.validate_document,
+            aggregate.render_json,
+            aggregate.render_markdown,
+        ):
+            with self.subTest(check=check.__name__):
+                with self.assertRaises(aggregate.AggregateInputError) as caught:
+                    check(document)
+                self.assertNotIn("private-marker", str(caught.exception))
+
+    def test_non_string_gate_entries_are_refused_without_type_errors(self):
+        for name in ("fail_on", "triggered"):
+            for item in ({"private-marker": 1}, ["private-marker"], None, True, 1):
+                with self.subTest(name=name, item=item):
+                    changed = deepcopy(self.document)
+                    changed["gate"][name] = [item]
+                    self.assert_refused(changed)
+
+    def test_diff_and_case_counts_must_cover_exactly_the_events(self):
+        for name, key in (("counts", "unchanged"), ("case_classes", "opaque")):
+            for change in (-1, 1):
+                with self.subTest(name=name, change=change):
+                    changed = deepcopy(self.document)
+                    changed[name][key] += change
+                    self.assert_refused(changed)
+
+    def test_each_hook_outcome_side_must_cover_exactly_the_events(self):
+        full = dict.fromkeys(OUTCOMES, 0) | {"allow": self.document["events"]}
+        for side in aggregate.SIDES:
+            for change in (-1, 1):
+                with self.subTest(side=side, change=change):
+                    changed = deepcopy(self.document)
+                    changed["hook_outcomes"] = {
+                        name: deepcopy(full) for name in aggregate.SIDES
+                    }
+                    changed["hook_outcomes"][side]["allow"] += change
+                    self.assert_refused(changed)
+
+    def test_triggered_classes_must_match_nonzero_fail_on_counts_in_order(self):
+        for triggered in (
+            [],
+            ["newly-allowed"],
+            ["newly-indeterminate", "newly-allowed"],
+            ["newly-allowed", "newly-indeterminate", "newly-denied"],
+        ):
+            with self.subTest(triggered=triggered):
+                changed = deepcopy(self.document)
+                changed["gate"]["triggered"] = triggered
+                self.assert_refused(changed)
+        changed = deepcopy(self.document)
+        changed["counts"]["unchanged"] += changed["counts"]["newly-allowed"]
+        changed["counts"]["newly-allowed"] = 0
+        self.assert_refused(changed)
+        changed = deepcopy(self.document)
+        changed["gate"]["fail_on"].reverse()
+        changed["gate"]["triggered"].reverse()
+        self.assertEqual(aggregate.validate_document(changed), changed)
+
+    def test_gate_status_matches_failures_and_triggered_classes(self):
+        for has_failure in (False, True):
+            for has_trigger in (False, True):
+                changed = deepcopy(self.document)
+                if has_failure:
+                    changed["source_failures"]["candidate"]["other"] = 1
+                if not has_trigger:
+                    changed["gate"].update(fail_on=[], triggered=[])
+                expected = "error" if has_failure else "fail" if has_trigger else "pass"
+                for status in aggregate.GATE_STATUSES:
+                    with self.subTest(
+                        failure=has_failure, trigger=has_trigger, status=status
+                    ):
+                        changed["gate"]["status"] = status
+                        if status == expected:
+                            self.assertEqual(
+                                aggregate.validate_document(changed), changed
+                            )
+                        else:
+                            self.assert_refused(changed)
+
+    def test_multiple_source_failures_per_event_are_not_event_counts(self):
+        for side in aggregate.SIDES:
+            with self.subTest(side=side):
+                changed = deepcopy(self.document)
+                changed["source_failures"][side]["other"] = changed["events"] + 1
+                changed["gate"]["status"] = "error"
+                self.assertEqual(aggregate.validate_document(changed), changed)
+
+    def test_zero_counts_do_not_trigger_a_selected_class(self):
+        changed = deepcopy(self.document)
+        changed["counts"]["unchanged"] += changed["counts"]["newly-allowed"]
+        changed["counts"]["newly-allowed"] = 0
+        changed["gate"].update(fail_on=["newly-allowed"], triggered=[], status="pass")
+        self.assertEqual(aggregate.validate_document(changed), changed)
+
+    def test_empty_documents_remain_valid_with_complete_zero_counts(self):
+        changed = deepcopy(self.document)
+        changed["events"] = 0
+        changed["counts"] = dict.fromkeys(DIFF_CLASSES, 0)
+        changed["case_classes"] = dict.fromkeys(sorted(CASE_CLASSES), 0)
+        changed["hook_outcomes"] = {
+            side: dict.fromkeys(OUTCOMES, 0) for side in aggregate.SIDES
+        }
+        changed["gate"].update(triggered=[], status="pass")
+        self.assertEqual(aggregate.validate_document(changed), changed)
+
+
 class HostileFixtureTests(unittest.TestCase):
     def test_no_corpus_text_reaches_either_artifact(self):
         report, _, _ = build(
@@ -329,6 +440,13 @@ class DeterminismAndBoundTests(unittest.TestCase):
 
     def worst_case(self) -> dict:
         big = aggregate.MAX_COUNT
+
+        def partition(names):
+            count, remainder = divmod(big, len(names))
+            return {
+                name: count + (index < remainder) for index, name in enumerate(names)
+            }
+
         return {
             "schema_version": aggregate.AGGREGATE_VERSION,
             "gate": {
@@ -337,10 +455,10 @@ class DeterminismAndBoundTests(unittest.TestCase):
                 "triggered": sorted(aggregate.RUN_GATE_CLASSES),
             },
             "events": big,
-            "counts": dict.fromkeys(DIFF_CLASSES, big),
-            "case_classes": dict.fromkeys(sorted(CASE_CLASSES), big),
+            "counts": partition(DIFF_CLASSES),
+            "case_classes": partition(sorted(CASE_CLASSES)),
             "hook_outcomes": {
-                side: dict.fromkeys(OUTCOMES, big) for side in ("baseline", "candidate")
+                side: partition(OUTCOMES) for side in ("baseline", "candidate")
             },
             "source_failures": {
                 side: dict.fromkeys(aggregate.FAILURE_KEYS, big)
@@ -348,10 +466,22 @@ class DeterminismAndBoundTests(unittest.TestCase):
             },
         }
 
-    def test_the_whole_vocabulary_at_the_largest_count_fits_the_bounds(self):
+    def test_the_whole_vocabulary_at_maximum_digit_width_fits_the_bounds(self):
         # Fails only when a fixed vocabulary grows past the bound: raise the
         # constants and the Action summary bound together, deliberately.
         document = self.worst_case()
+        for counts in (
+            document["counts"],
+            document["case_classes"],
+            *document["hook_outcomes"].values(),
+            *document["source_failures"].values(),
+        ):
+            self.assertTrue(
+                all(
+                    len(str(count)) == len(str(aggregate.MAX_COUNT))
+                    for count in counts.values()
+                )
+            )
         size_json = len(aggregate.render_json(document))
         size_md = len(aggregate.render_markdown(document))
         self.assertLessEqual(size_json, aggregate.MAX_JSON_BYTES)
