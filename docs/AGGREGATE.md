@@ -28,9 +28,18 @@ The Markdown renderer emits only fixed vocabulary and integers, so it has no
 free text to escape. Small counts can still disclose information about a private
 corpus; this is not differential privacy.
 
+Both renderers validate count and gate consistency before rendering. Diff-class
+and case-class counts must each sum to `events`, as must each side's hook outcomes
+when present. `triggered` must be the nonzero classes in `fail_on`, in that order.
+Any source-failure count makes the status `error`; otherwise it is `fail` when
+classes are triggered and `pass` when none are. Source failures can exceed the
+event count because one event can have multiple failures. Invalid documents raise
+a fixed diagnostic without echoing their values. These checks prove internal
+consistency, not authorship.
+
 Size is bounded by the vocabularies, not by the corpus: at most 4 KiB of Markdown
-and 6 KiB of JSON. A unit test renders every vocabulary entry at the largest
-count, so the bound can only be exceeded when a vocabulary grows.
+and 6 KiB of JSON. A unit test renders every vocabulary entry at the maximum
+count digit width with consistent event totals, so vocabulary growth is detected.
 
 ## Written by `hooks`
 
