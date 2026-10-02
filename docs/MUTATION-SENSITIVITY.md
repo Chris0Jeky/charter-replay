@@ -124,3 +124,59 @@ executable dependencies, permissions, ambient environment values, external
 state, network and time unbound. See [hook context](HOOK-CONTEXT.md) and
 [hook execution](HOOK_EXECUTION.md). No runtime binary conformance or stronger
 trust boundary is asserted by this evaluator.
+
+## Optional synthetic I/O diagnostics
+
+From a source checkout, run the separate diagnostic probe:
+
+```sh
+python -m examples.hook_io_probe --attempts 1
+python -m examples.hook_io_probe --attempts 1 --inject-emfile
+```
+
+The probe only runs its fixed synthetic overflow hook. It accepts no caller hook,
+plan or corpus. Each attempt makes two serial invocations in fresh workspaces.
+The first command ordinarily observes two output-limit outcomes. The second
+observes one real overflow, then injects `EMFILE` at temporary-stream creation
+for invocation 2. It captures phase `stream-create`, class `OSError` and numeric
+errno without exception text. This injection is not a reproduction or diagnosis
+of the original macOS/Python 3.13 failure in issue #49.
+
+The worker instruments stream creation, write, seek, flush, descriptor/stat
+sizing, read and close; process launch, wait, poll and kill; POSIX group kill or
+Windows Job Object termination; workspace creation and removal. These are
+operation observations, not root-cause claims. Expected cleanup races can also
+produce an error record, such as `ProcessLookupError` after an exited POSIX hook.
+An overflow normally skips output reading, so its read/flush counters can be zero.
+Operations outside these wrappers and Windows wrapper-child internals are not
+instrumented. A worker-level failure cannot identify a more specific phase.
+The complete workspace cleanup call is observed. When it returns a refusal after
+swallowing an error, the probe emits a fixed `CleanupFailure` tag with null errno
+and winerror; it does not infer an exception class or copy the failure's text.
+Completion accounts for all planned invocations and does not imply cleanup success.
+
+Limits are three attempts, six hook invocations, one second per invocation,
+1024 bytes per hook output stream, 64 diagnostic records and 16 KiB per worker
+output stream and final document. The parent uses the existing family supervisor
+with a 15-second timeout; supervisor cleanup adds its existing bounded grace.
+Operation counters saturate at 10,000, and excess records set
+`records_truncated`. Truncation does not change outcome totals. No retries or
+stress sweep occur. Use the public commands above; `--worker` is an internal-only
+entry point. Direct worker invocation is unsupported and has no outer 15-second
+supervision bound.
+
+The local `synthetic-hook-io.v1` JSON contains only fixed vocabulary, bounded
+counts, invocation ordinals, allowlisted exception classes and numeric errno or
+winerror. Unknown exception subclasses map to `OSError` or `OtherError`; absent
+or out-of-range error numbers become null. It excludes messages, traceback,
+paths, argv, commands, environment values and printed output. The parent admits
+the worker document before returning it, requiring exact primitive types and
+all planned invocations for a complete receipt. Exit 0 means probe completion, even when
+it observed failed hooks; exit 2 means a controller or argument failure. Inspect
+the outcome counts, which are diagnostic observations, not a sensitivity score.
+
+The focused `test_hook_io_probe` contract tests run through the existing CI matrix,
+including macOS/Python 3.13. They assert actual bounded overflow, exact injected
+phase/class/errno, sentinel exclusion and diagnostic caps. Production hooks,
+the runner, mutation accounting and stable report formats are unchanged. The
+original OS condition remains unknown unless a future bounded probe observes it.
