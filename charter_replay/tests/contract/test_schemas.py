@@ -257,6 +257,7 @@ class SchemaContractTests(unittest.TestCase):
             "command-event.v1.schema.json",
             "policy-decision.v1.schema.json",
             "charter-case.v1.schema.json",
+            "mutation-plan.v1.schema.json",
         }
         self.assertEqual(expected, {path.name for path in schema_dir.glob("*.json")})
         for path in schema_dir.glob("*.json"):

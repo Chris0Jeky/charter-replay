@@ -170,6 +170,21 @@ def _parser() -> argparse.ArgumentParser:
     )
     agg.add_argument("--markdown", help="optional new aggregate.md; must not exist")
 
+    mutate = sub.add_parser("mutate", help="evaluate bounded hook mutation sensitivity")
+    mutate.add_argument("--plan", required=True, help="mutation-plan.v1 JSON")
+    mutate.add_argument("--corpus", required=True)
+    mutate.add_argument("--output", required=True, help="new directory; must not exist")
+    mutate.add_argument("--runtime", choices=RUNTIMES, default="claude")
+    mutate.add_argument("--ask-as", choices=ASK_EFFECTS, default="deny")
+    mutate.add_argument("--hook-timeout", type=kernel._parse_timeout, default=1.0)
+    mutate.add_argument(
+        "--hook-output-limit", type=_output_limit, default=DEFAULT_OUTPUT_LIMIT
+    )
+    mutate.add_argument("--max-invocations", type=int, default=2000)
+    mutate.add_argument(
+        "--max-timeout-seconds", type=kernel._parse_timeout, default=300.0
+    )
+
     importer = sub.add_parser("import", help="build a private corpus from transcripts")
     importer.add_argument("--claude-root", help="default: ~/.claude/projects")
     importer.add_argument("--codex-root", help="default: ~/.codex/sessions")
@@ -593,6 +608,27 @@ def main(argv: list[str] | None = None) -> int:
             return _run_repeat(args)
         if args.command == "aggregate":
             return _run_aggregate(args)
+        if args.command == "mutate":
+            from charter_replay import mutation
+
+            corpus = mutation.load_corpus(args.corpus)
+            baseline, mutants = mutation.load_plan(
+                args.plan,
+                runtime=args.runtime,
+                timeout=args.hook_timeout,
+                ask_effect=args.ask_as,
+                output_limit=args.hook_output_limit,
+            )
+            document, code = mutation.run_mutation(
+                baseline,
+                mutants,
+                corpus,
+                args.output,
+                max_invocations=args.max_invocations,
+                max_timeout_seconds=args.max_timeout_seconds,
+            )
+            _emit(mutation.render_markdown(document))
+            return code
         return _run_import(args)
     except (HookSpecError, kernel.ReplayInputError, ValueError) as exc:
         print(f"{PROG}: {exc}", file=sys.stderr)

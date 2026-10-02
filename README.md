@@ -22,6 +22,12 @@ verified counts-only `aggregate.v1` (written by `hooks`, or rebuilt with
 
 ## Measure a hook
 
+To measure corpus sensitivity to controlled toy hook changes, use
+`charter-replay mutate` with an explicit bounded plan. It checks the baseline
+twice and separates killed/survived mutants from invalid/timeout recordings.
+See [mutation sensitivity](docs/MUTATION-SENSITIVITY.md) for the synthetic
+example, limits and score denominator.
+
 `charter-replay hooks` runs two PreToolUse command hooks over a corpus and
 diffs their decisions: newly blocked, newly allowed, unchanged, and newly
 indeterminate (errors and timeouts), broken down by case class and family. It
