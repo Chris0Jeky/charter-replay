@@ -111,10 +111,12 @@ def _reduced(word: str) -> str:
     return word
 
 
-def _bound_file(kind: str, path: Path, name: str) -> dict[str, Any]:
+def _bound_file(
+    kind: str, path: Path, name: str, limit: int = MAX_FILE_BYTES
+) -> dict[str, Any]:
     entry: dict[str, Any] = {"kind": kind, "name": _display_name(name)}
     try:
-        sha256, size = _hash_file(path, MAX_FILE_BYTES)
+        sha256, size = _hash_file(path, limit)
     except _LimitExceeded:
         return {**entry, "status": "unbound", "reason": "limit-exceeded"}
     except OSError:
@@ -122,7 +124,7 @@ def _bound_file(kind: str, path: Path, name: str) -> dict[str, Any]:
     return {**entry, "status": "bound", "sha256": sha256, "size": size}
 
 
-def _executable(argv0: str) -> dict[str, Any]:
+def _executable(argv0: str, limit: int = MAX_FILE_BYTES) -> dict[str, Any]:
     # Resolve the way the runtime would, against the PATH the hook receives.
     if os.sep in argv0 or "/" in argv0:
         found = argv0 if Path(argv0).is_file() else None
@@ -140,7 +142,7 @@ def _executable(argv0: str) -> dict[str, Any]:
             "status": "unbound",
             "reason": "unresolved",
         }
-    return _bound_file("executable", Path(found), name)
+    return _bound_file("executable", Path(found), name, limit)
 
 
 def _is_file(word: str) -> bool:
@@ -157,11 +159,13 @@ def _is_dir(word: str) -> bool:
         return False
 
 
-def _argv_word(word: str, kind: str | None) -> dict[str, Any]:
+def _argv_word(
+    word: str, kind: str | None, limit: int = MAX_FILE_BYTES
+) -> dict[str, Any]:
     # `kind` fixes a position seen earlier, so a file the hook itself creates
     # (an output path) never turns a word into a file on re-observation.
     if kind == "file" or (kind is None and _is_file(word)):
-        return _bound_file("file", Path(word), Path(word).name)
+        return _bound_file("file", Path(word), Path(word).name, limit)
     if kind == "directory" or (kind is None and _is_dir(word)):
         # A directory argument (rules, config) is not read; declare it rather
         # than let two different trees pass as one input.
@@ -286,6 +290,7 @@ def describe_hook_context(
     jobs: int,
     argv_kinds: list[str] | None = None,
     output: Path | None = None,
+    max_file_bytes: int = MAX_FILE_BYTES,
 ) -> dict[str, Any]:
     """Return the input-only descriptor for one hook recording.
 
@@ -294,12 +299,17 @@ def describe_hook_context(
     `output` is the recording directory; a template containing it is unbound.
     """
 
+    if type(max_file_bytes) is not int or not 1 <= max_file_bytes <= MAX_FILE_BYTES:
+        raise ValueError("context file byte limit must be a positive bounded integer")
     adapter = get_adapter(spec.runtime)
     kinds = argv_kinds or [None] * len(spec.argv)
     if len(kinds) != len(spec.argv):
         raise ValueError("argv kinds do not match the hook argv")
-    argv = [_executable(spec.argv[0])]
-    argv += [_argv_word(word, kind) for word, kind in zip(spec.argv[1:], kinds[1:])]
+    argv = [_executable(spec.argv[0], max_file_bytes)]
+    argv += [
+        _argv_word(word, kind, max_file_bytes)
+        for word, kind in zip(spec.argv[1:], kinds[1:])
+    ]
     template = (
         None if workspace_template is None else _template(workspace_template, output)
     )

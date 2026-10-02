@@ -1,0 +1,8 @@
+{
+  "schema_version": "mutation-plan.v1",
+  "baseline": ["python", "guard_v1.py"],
+  "mutants": [
+    {"id": "changed-rules", "hook": ["python", "guard_v2.py"]},
+    {"id": "unchanged-control", "hook": ["python", "guard_v1.py"]}
+  ]
+}

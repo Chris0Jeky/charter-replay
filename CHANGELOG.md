@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Bounded mutation sensitivity (R05-3).** `mutate` accepts explicit toy hook
+  argv in `mutation-plan.v1`, checks two healthy baseline passes, and publishes
+  deterministic killed/survived/invalid/timeout accounting. Only healthy effect
+  differences count as killed; failures are excluded from the explicit score
+  denominator. Plan/corpus bytes, input hashing, invocations, timeout sum and
+  process output are bounded before or during execution. Includes a synthetic
+  example and baseline/admission/context regressions; no security-proof claim.
+
 - **Kernel `report.md` renders free text literally (report-rendering change).** The
   event table cells (event id, classification, baseline and candidate effect and
   reason) and the source-failure lines now go through the same `markdown_literal`

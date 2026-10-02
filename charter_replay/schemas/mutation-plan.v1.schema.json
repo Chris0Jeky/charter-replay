@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Explicit hook mutation plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "baseline", "mutants"],
+  "properties": {
+    "schema_version": {"const": "mutation-plan.v1"},
+    "baseline": {"$ref": "#/$defs/argv"},
+    "mutants": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "hook"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"},
+          "hook": {"$ref": "#/$defs/argv"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "argv": {
+      "type": "array", "minItems": 1, "maxItems": 128,
+      "items": {"type": "string", "minLength": 1, "maxLength": 4096, "not": {"pattern": "\u0000"}}
+    }
+  }
+}
