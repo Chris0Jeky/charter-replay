@@ -8,7 +8,8 @@ import re
 import tempfile
 import unittest
 
-from charter_replay import cli as kernel
+from charter_replay import __version__, cli as kernel
+from charter_replay.manifests import derive_run_id
 
 REPO = Path(__file__).resolve().parents[3]
 PUBLIC = [
@@ -56,7 +57,19 @@ class ExampleReportTests(unittest.TestCase):
             fresh = json.loads(Path(tmp, "report.json").read_text("utf-8"))
         committed = json.loads((example / "report.json").read_text("utf-8"))
         self.assertEqual(code, 1)
-        for report in (fresh, committed):
+        # Preserve the historical fixture and verify each version's identity
+        # before comparing the replay decisions across runner versions.
+        for report, version in ((fresh, __version__), (committed, "0.1.0")):
+            self.assertEqual(
+                report.pop("run_id"),
+                derive_run_id(
+                    runner_version=version,
+                    baseline_sha256=report["policies"]["baseline"]["sha256"],
+                    candidate_sha256=report["policies"]["candidate"]["sha256"],
+                    corpus_manifest_sha256=report["corpus"]["manifest_sha256"],
+                    fail_on=report["gate"]["fail_on"],
+                ),
+            )
             report.pop("generated_at")
         self.assertEqual(fresh, committed)
 

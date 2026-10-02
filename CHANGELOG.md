@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.1 — 2026-10-02
+
+- The package and runner version advance together to 0.1.1. Run identities include
+  the runner version, so new replay run IDs differ from 0.1.0 even with identical
+  policy and corpus inputs. Existing recordings retain their original manifests.
+
 - A separate opt-in synthetic hook I/O probe captures fixed operation phases,
   allowlisted exception classes and bounded errno/winerror without private text.
   Attempts, execution and diagnostic output are capped. It covers real overflow
