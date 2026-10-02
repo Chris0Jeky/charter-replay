@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A separate opt-in synthetic hook I/O probe captures fixed operation phases,
+  allowlisted exception classes and bounded errno/winerror without private text.
+  Attempts, execution and diagnostic output are capped. It covers real overflow
+  followed by injected `EMFILE`; it does not diagnose the prior macOS OS condition
+  or change production execution, mutation accounting or stable report formats.
 - **Bounded mutation sensitivity (R05-3).** `mutate` accepts explicit toy hook
   argv in `mutation-plan.v1`, checks two healthy baseline passes, and publishes
   deterministic killed/survived/invalid/timeout accounting. Only healthy effect
