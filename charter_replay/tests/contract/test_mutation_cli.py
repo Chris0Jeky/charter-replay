@@ -247,6 +247,16 @@ class MutationCliTests(unittest.TestCase):
         self.write_plan([("same", baseline)], baseline=baseline)
         self.assertEqual(self.run_cli()[0], 1)
         self.assertEqual(observed.read_text(), "README.md")
+        from charter_replay import mutation
+
+        admitted, _ = mutation.load_plan(
+            str(self.plan),
+            runtime="claude",
+            timeout=0.5,
+            ask_effect="deny",
+            output_limit=1024,
+        )
+        self.assertEqual(admitted.descriptor["hook"]["argv"][-1]["kind"], "word")
 
     def test_total_hook_byte_budget_is_checked_before_hashing_inputs(self):
         from charter_replay import mutation, hook_context
@@ -306,3 +316,20 @@ class MutationCliTests(unittest.TestCase):
         )
         self.assertEqual(descriptor["hook"]["argv"][1]["status"], "unbound")
         self.assertEqual(descriptor["hook"]["argv"][1]["reason"], "limit-exceeded")
+
+    def test_plan_relative_directory_is_refused_before_launch(self):
+        (self.root / "synthetic-rules").mkdir()
+        baseline = [*self.baseline, "synthetic-rules"]
+        self.write_plan([("same", baseline)], baseline=baseline)
+        with forbid_process_launch():
+            code, _, diagnostic = self.run_cli()
+        self.assertEqual(code, 2)
+        self.assertIn("directory arguments", diagnostic)
+
+    def test_output_overflow_is_invalid_and_never_killed(self):
+        self.write_plan([("overflow", self.hook("overflow", "print('x' * 10000)"))])
+        self.assertEqual(self.run_cli("--hook-output-limit", "1024")[0], 3)
+        doc = self.document()
+        self.assertEqual(doc["counts"]["invalid"], 1)
+        self.assertEqual(doc["counts"]["killed"], 0)
+        self.assertEqual(doc["mutants"][0]["failure_codes"], ["hook-output-limit"])

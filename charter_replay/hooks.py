@@ -365,6 +365,7 @@ def record_hook(
     workspace_template: Path | None = None,
     jobs: int = 1,
     input_byte_limit: int | None = None,
+    argv_kinds: list[str] | None = None,
 ) -> dict[str, Any]:
     """Record one decision per event and write a replay v0 recorded source.
 
@@ -391,6 +392,14 @@ def record_hook(
         type(input_byte_limit) is not int or input_byte_limit < 1
     ):
         raise HookSpecError("input byte limit must be a positive integer")
+    if argv_kinds is not None and (
+        not isinstance(argv_kinds, list)
+        or len(argv_kinds) != len(spec.argv)
+        or not argv_kinds
+        or argv_kinds[0] != "executable"
+        or any(kind not in ("word", "file", "directory") for kind in argv_kinds[1:])
+    ):
+        raise HookSpecError("argv kinds must match the admitted hook arguments")
     if (
         type(spec.output_limit) is not int
         or not MIN_OUTPUT_LIMIT <= spec.output_limit <= MAX_OUTPUT_LIMIT
@@ -406,10 +415,19 @@ def record_hook(
     context_limits = (
         {} if input_byte_limit is None else {"max_file_bytes": input_byte_limit}
     )
+    initial_context_options = dict(context_limits)
+    if argv_kinds is not None:
+        initial_context_options["argv_kinds"] = argv_kinds
 
     # Retain the initially observed input, not whatever bytes a hook leaves behind.
     try:
-        file_positions = hook_file_positions(spec.argv)
+        file_positions = (
+            hook_file_positions(spec.argv)
+            if argv_kinds is None
+            else frozenset(
+                position for position, kind in enumerate(argv_kinds) if kind == "file"
+            )
+        )
         initial_identity = hook_identity(
             spec.argv, file_positions=file_positions, max_file_bytes=input_byte_limit
         )
@@ -421,7 +439,7 @@ def record_hook(
             workspace_template=workspace_template,
             jobs=jobs,
             output=output,
-            **context_limits,
+            **initial_context_options,
         )
     except OSError as exc:
         raise HookSpecError("hook context could not be described") from exc

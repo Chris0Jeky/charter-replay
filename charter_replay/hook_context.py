@@ -290,7 +290,7 @@ def describe_hook_context(
     jobs: int,
     argv_kinds: list[str] | None = None,
     output: Path | None = None,
-    max_file_bytes: int = MAX_FILE_BYTES,
+    max_file_bytes: int | None = None,
 ) -> dict[str, Any]:
     """Return the input-only descriptor for one hook recording.
 
@@ -299,6 +299,8 @@ def describe_hook_context(
     `output` is the recording directory; a template containing it is unbound.
     """
 
+    if max_file_bytes is None:
+        max_file_bytes = MAX_FILE_BYTES
     if type(max_file_bytes) is not int or not 1 <= max_file_bytes <= MAX_FILE_BYTES:
         raise ValueError("context file byte limit must be a positive bounded integer")
     adapter = get_adapter(spec.runtime)

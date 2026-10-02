@@ -110,7 +110,7 @@ def load_corpus(value: str) -> kernel.LoadedCharterCorpus:
     )
 
 
-def _argv(value: Any, parent: Path) -> tuple[str, ...]:
+def _argv(value: Any, parent: Path) -> tuple[tuple[str, ...], list[str]]:
     if (
         not isinstance(value, list)
         or not 1 <= len(value) <= 128
@@ -125,10 +125,14 @@ def _argv(value: Any, parent: Path) -> tuple[str, ...]:
     # Existing files and path-shaped executables are relative to the plan,
     # independent of the CLI's working directory. No process-wide chdir.
     resolved = []
+    kinds = []
     for index, word in enumerate(value):
         path = parent / word
+        if index and path.is_dir():
+            raise ValueError("mutation directory arguments are not supported")
         if path.is_file() or (index == 0 and ("/" in word or "\\" in word)):
             resolved.append(str(path.resolve()))
+            kinds.append("executable" if index == 0 else "file")
         elif (
             index
             and not word.startswith("-")
@@ -138,7 +142,8 @@ def _argv(value: Any, parent: Path) -> tuple[str, ...]:
             raise ValueError("mutation hook names a missing script")
         else:
             resolved.append(word)
-    return tuple(resolved)
+            kinds.append("executable" if index == 0 else "word")
+    return tuple(resolved), kinds
 
 
 def load_plan(
@@ -189,9 +194,8 @@ def load_plan(
     admitted = []
     total_bytes = 0
     for name, argv in specs:
-        spec = HookSpec(
-            _argv(argv, source.parent), runtime, timeout, ask_effect, output_limit
-        )
+        resolved, kinds = _argv(argv, source.parent)
+        spec = HookSpec(resolved, runtime, timeout, ask_effect, output_limit)
         executable = spec.argv[0]
         if os.name == "nt" and not Path(executable).suffix:
             executable += ".exe"
@@ -207,7 +211,9 @@ def load_plan(
         )
         # Preflight the entire plan before any file is hashed. The context
         # descriptor independently rechecks bytes; hook input changes are failures.
-        for word in spec.argv:
+        for word, kind in zip(spec.argv, kinds):
+            if kind == "word":
+                continue
             path = Path(word)
             if path.is_dir():
                 raise ValueError("mutation directory arguments are not supported")
@@ -216,17 +222,18 @@ def load_plan(
                 if size > MAX_INPUT_BYTES:
                     raise ValueError("mutation hook file exceeds its byte limit")
                 total_bytes += size
-        admitted.append((name, spec))
+        admitted.append((name, spec, kinds))
     if total_bytes > MAX_HOOK_BYTES:
         raise ValueError("mutation hook inputs exceed the total byte limit")
     hooks = []
     actual_bytes = 0
-    for name, spec in admitted:
+    for name, spec, kinds in admitted:
         descriptor = hook_context.describe_hook_context(
             spec,
             workspace_template=None,
             jobs=1,
             max_file_bytes=MAX_INPUT_BYTES,
+            argv_kinds=kinds,
         )
         for entry in descriptor["hook"]["argv"]:
             if entry.get("kind") in ("executable", "file", "directory"):
@@ -264,6 +271,7 @@ def _observe(
             policy_id="mutation-hook",
             jobs=1,
             input_byte_limit=MAX_INPUT_BYTES,
+            argv_kinds=hook_context.argv_kinds(hook.descriptor),
         )
     except (OSError, ValueError):
         return "invalid", {}, ["recording-failed"], True
