@@ -8,6 +8,9 @@ Compare coding-agent command policies against a pinned replay corpus and catch d
 python -m pip install .
 ```
 
+Published wheel/source archives, verification and rollback instructions:
+[release procedure](docs/RELEASING.md).
+
 ```bash
 charter-replay hooks   --baseline "python examples/toy-guard/guard_v1.py"   --candidate "python examples/toy-guard/guard_v2.py"   --corpus charter_replay/corpora/charter   --output reports/demo
 ```

@@ -402,7 +402,7 @@ class RunManifestTests(unittest.TestCase):
                 }
             },
             {"fail_on": ["newly-allowed"]},
-            {"runner_version": "0.1.1"},
+            {"runner_version": original["runner_version"] + ".changed"},
         ]
         for change in changes:
             arguments = {

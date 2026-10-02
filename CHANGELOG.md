@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.1 — 2026-10-02
+
+- The package and runner version advance together to 0.1.1. Run identities include
+  the runner version, so new replay run IDs differ from 0.1.0 even with identical
+  policy and corpus inputs. Existing recordings retain their original manifests.
+
 - Recognized Windows CPython virtualenv launchers now fail process-source admission
   with a path-free input error before snapshots, policy invocation or report publication.
   Use a native replay controller and native process interpreter. Accepted v9 identities
