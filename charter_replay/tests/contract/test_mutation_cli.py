@@ -1,6 +1,7 @@
 """Mutation evaluation through real synthetic hooks; corpus text remains inert."""
 
 from contextlib import redirect_stderr, redirect_stdout
+import errno
 import io
 import json
 from pathlib import Path
@@ -336,3 +337,68 @@ class MutationCliTests(unittest.TestCase):
         # source failure. Require real overflow evidence without assuming every
         # invocation fails in exactly the same way.
         self.assertIn("hook-output-limit", doc["mutants"][0]["failure_codes"])
+
+    def test_overflow_and_stream_creation_failure_preserve_invalid_accounting(self):
+        from charter_replay import hooks, policy_sources
+
+        mutant = self.hook("overflow", "print('x' * 10000)")
+        self.write_plan([("overflow", mutant)])
+        real_runner = hooks._run_policy_process
+        real_hook = hooks.run_hook
+        mutant_invocations = 0
+        first_outcome = None
+
+        def observed_hook(spec, payload, *, workspace):
+            nonlocal first_outcome
+            outcome = real_hook(spec, payload, workspace=workspace)
+            if tuple(spec.argv[1:]) == tuple(mutant[1:]) and first_outcome is None:
+                detail = (
+                    outcome.detail
+                    if outcome.outcome in ("output-limit", "start-failed")
+                    else "<detail omitted>"
+                )
+                first_outcome = (outcome.outcome, detail)
+            return outcome
+
+        def resource_limited_runner(argv, input_bytes, **options):
+            nonlocal mutant_invocations
+            if tuple(argv[1:]) == tuple(mutant[1:]):
+                mutant_invocations += 1
+                if mutant_invocations == 2:
+                    # The first event really overflows; the second cannot create
+                    # its streams. This does not identify the prior macOS cause.
+                    with mock.patch.object(
+                        policy_sources.tempfile,
+                        "TemporaryFile",
+                        side_effect=OSError(
+                            errno.EMFILE,
+                            "synthetic temporary-stream resource exhaustion",
+                        ),
+                    ):
+                        return real_runner(argv, input_bytes, **options)
+            return real_runner(argv, input_bytes, **options)
+
+        with (
+            mock.patch.object(
+                hooks, "_run_policy_process", side_effect=resource_limited_runner
+            ),
+            mock.patch.object(hooks, "run_hook", side_effect=observed_hook),
+        ):
+            code, _, _ = self.run_cli("--hook-output-limit", "1024")
+
+        doc = self.document()
+        diagnostic = f"first mutant outcome: {first_outcome!r}"
+        self.assertEqual(code, 3, diagnostic)
+        self.assertEqual(doc["baseline"]["status"], "healthy", diagnostic)
+        self.assertEqual(
+            doc["counts"], dict(killed=0, survived=0, invalid=1, timeout=0), diagnostic
+        )
+        self.assertEqual(
+            doc["mutants"][0]["failure_codes"],
+            ["hook-output-limit", "hook-start-failed"],
+            diagnostic,
+        )
+        self.assertEqual(doc["mutants"][0]["changed_event_ids"], [], diagnostic)
+        self.assertEqual(
+            doc["score"], dict(numerator=0, denominator=0, rate=None), diagnostic
+        )
