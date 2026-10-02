@@ -250,6 +250,57 @@ def _load_recorded_source(raw_path: str) -> LoadedPolicySource:
     )
 
 
+def _is_windows_venv_launcher(executable_digest: str) -> bool:
+    """Recognize this controller's launcher and installed CPython templates."""
+
+    if os.name != "nt":
+        return False
+    base_value = getattr(sys, "_base_executable", None)
+    base_executable = Path(base_value or sys.executable)
+    # A native interpreter stays native even if a template contains its bytes.
+    # Without CPython's private attribute, a venv controller may itself be a
+    # launcher: use the fallback for lookup, but do not assume it is native.
+    if base_value or sys.prefix == sys.base_prefix:
+        try:
+            if sha256_file(base_executable) == executable_digest:
+                return False
+        except OSError:
+            pass
+    if sys.prefix != sys.base_prefix:
+        try:
+            controller = Path(sys.executable).resolve(strict=True)
+            base = base_executable.resolve(strict=True)
+            if controller != base and sha256_file(controller) == executable_digest:
+                return True
+        except (OSError, RuntimeError):
+            pass
+    # Older installations use python*.exe template names; newer ones use
+    # venv*launcher.exe. Build layouts may keep launchers beside the base exe.
+    templates = Path(sys.base_prefix) / "Lib" / "venv" / "scripts" / "nt"
+    references = [
+        templates / name
+        for name in (
+            "python.exe",
+            "pythonw.exe",
+            "python_d.exe",
+            "pythonw_d.exe",
+            "venvlauncher.exe",
+            "venvwlauncher.exe",
+        )
+    ]
+    references.extend(
+        base_executable.parent / name
+        for name in ("venvlauncher.exe", "venvwlauncher.exe")
+    )
+    for reference in references:
+        try:
+            if sha256_file(reference) == executable_digest:
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _load_process_source(
     raw_argv: str, timeout: float, *, json_argv: bool = False
 ) -> LoadedPolicySource:
@@ -305,6 +356,12 @@ def _load_process_source(
         raise ReplayInputError(
             "process executable or policy file could not be read"
         ) from exc
+    if _is_windows_venv_launcher(executable_digest):
+        raise ReplayInputError(
+            "Windows virtualenv launcher cannot run from a bound process snapshot; "
+            "run the replay controller with native Python and select its native "
+            "executable for the process source"
+        )
     try:
         snapshot_parent = Path(tempfile.gettempdir()).resolve(strict=True)
     except (OSError, RuntimeError) as exc:

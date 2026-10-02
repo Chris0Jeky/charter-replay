@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Recognized Windows CPython virtualenv launchers now fail process-source admission
+  with a path-free input error before snapshots, policy invocation or report publication.
+  Use a native replay controller and native process interpreter. Accepted v9 identities
+  and snapshot guarantees remain unchanged. Real Windows native/venv regression
+  coverage includes copied aliases and both argv encodings; CI adds Windows Python 3.14.
 - **Bounded mutation sensitivity (R05-3).** `mutate` accepts explicit toy hook
   argv in `mutation-plan.v1`, checks two healthy baseline passes, and publishes
   deterministic killed/survived/invalid/timeout accounting. Only healthy effect
