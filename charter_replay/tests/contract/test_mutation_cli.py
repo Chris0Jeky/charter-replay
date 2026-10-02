@@ -332,4 +332,7 @@ class MutationCliTests(unittest.TestCase):
         doc = self.document()
         self.assertEqual(doc["counts"]["invalid"], 1)
         self.assertEqual(doc["counts"]["killed"], 0)
-        self.assertEqual(doc["mutants"][0]["failure_codes"], ["hook-output-limit"])
+        # Each event runs a fresh process; another event can have an additional
+        # source failure. Require real overflow evidence without assuming every
+        # invocation fails in exactly the same way.
+        self.assertIn("hook-output-limit", doc["mutants"][0]["failure_codes"])
