@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Bounded mutation sensitivity (R05-3).** `mutate` accepts explicit toy hook
+  argv in `mutation-plan.v1`, checks two healthy baseline passes, and publishes
+  deterministic killed/survived/invalid/timeout accounting. Only healthy effect
+  differences count as killed; failures are excluded from the explicit score
+  denominator. Plan/corpus bytes, input hashing, invocations, timeout sum and
+  process output are bounded before or during execution. Includes a synthetic
+  example and baseline/admission/context regressions; no security-proof claim.
+
 - Aggregate document validation now rejects inconsistent event totals and gates,
   and malformed gate entries raise a fixed `AggregateInputError` instead of a
   `TypeError`. Valid `aggregate.v1` JSON and Markdown bytes are unchanged.

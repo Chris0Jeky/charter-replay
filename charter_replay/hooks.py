@@ -287,7 +287,10 @@ def hook_file_positions(argv: Sequence[str]) -> frozenset[int]:
 
 
 def hook_identity(
-    argv: Sequence[str], *, file_positions: frozenset[int] | None = None
+    argv: Sequence[str],
+    *,
+    file_positions: frozenset[int] | None = None,
+    max_file_bytes: int | None = None,
 ) -> str:
     """Digest the hook's argv words and the bytes of any argument that is a file.
 
@@ -307,7 +310,14 @@ def hook_identity(
         if position in file_positions:
             if path.is_file():
                 digest.update(b"file\0" + path.name.encode("utf-8") + b"\0")
-                digest.update(path.read_bytes())
+                if max_file_bytes is None:
+                    data = path.read_bytes()
+                else:
+                    with path.open("rb") as stream:
+                        data = stream.read(max_file_bytes + 1)
+                    if len(data) > max_file_bytes:
+                        raise OSError("hook input exceeds its byte limit")
+                digest.update(data)
             else:
                 digest.update(b"missing\0" + path.name.encode("utf-8") + b"\0")
         else:
@@ -354,6 +364,8 @@ def record_hook(
     policy_id: str,
     workspace_template: Path | None = None,
     jobs: int = 1,
+    input_byte_limit: int | None = None,
+    argv_kinds: list[str] | None = None,
 ) -> dict[str, Any]:
     """Record one decision per event and write a replay v0 recorded source.
 
@@ -376,6 +388,18 @@ def record_hook(
         )
     if isinstance(jobs, bool) or not isinstance(jobs, int) or jobs < 1:
         raise HookSpecError("jobs must be a positive integer")
+    if input_byte_limit is not None and (
+        type(input_byte_limit) is not int or input_byte_limit < 1
+    ):
+        raise HookSpecError("input byte limit must be a positive integer")
+    if argv_kinds is not None and (
+        not isinstance(argv_kinds, list)
+        or len(argv_kinds) != len(spec.argv)
+        or not argv_kinds
+        or argv_kinds[0] != "executable"
+        or any(kind not in ("word", "file", "directory") for kind in argv_kinds[1:])
+    ):
+        raise HookSpecError("argv kinds must match the admitted hook arguments")
     if (
         type(spec.output_limit) is not int
         or not MIN_OUTPUT_LIMIT <= spec.output_limit <= MAX_OUTPUT_LIMIT
@@ -388,15 +412,34 @@ def record_hook(
     # hook_context builds on this module's constants, so it is imported late.
     from charter_replay import hook_context
 
+    context_limits = (
+        {} if input_byte_limit is None else {"max_file_bytes": input_byte_limit}
+    )
+    initial_context_options = dict(context_limits)
+    if argv_kinds is not None:
+        initial_context_options["argv_kinds"] = argv_kinds
+
     # Retain the initially observed input, not whatever bytes a hook leaves behind.
     try:
-        file_positions = hook_file_positions(spec.argv)
-        initial_identity = hook_identity(spec.argv, file_positions=file_positions)
+        file_positions = (
+            hook_file_positions(spec.argv)
+            if argv_kinds is None
+            else frozenset(
+                position for position, kind in enumerate(argv_kinds) if kind == "file"
+            )
+        )
+        initial_identity = hook_identity(
+            spec.argv, file_positions=file_positions, max_file_bytes=input_byte_limit
+        )
     except OSError as exc:
         raise HookSpecError("hook input fingerprint could not be read") from exc
     try:
         initial_context = hook_context.describe_hook_context(
-            spec, workspace_template=workspace_template, jobs=jobs, output=output
+            spec,
+            workspace_template=workspace_template,
+            jobs=jobs,
+            output=output,
+            **initial_context_options,
         )
     except OSError as exc:
         raise HookSpecError("hook context could not be described") from exc
@@ -439,7 +482,9 @@ def record_hook(
 
     input_failure = None
     try:
-        final_identity = hook_identity(spec.argv, file_positions=file_positions)
+        final_identity = hook_identity(
+            spec.argv, file_positions=file_positions, max_file_bytes=input_byte_limit
+        )
         if final_identity != initial_identity:
             input_failure = SourceFailure(
                 code="hook-input-changed",
@@ -461,6 +506,7 @@ def record_hook(
             jobs=jobs,
             argv_kinds=hook_context.argv_kinds(initial_context),
             output=output,
+            **context_limits,
         )
         if hook_context.context_id(final_context) != hook_context.context_id(
             initial_context

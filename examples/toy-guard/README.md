@@ -1,5 +1,10 @@
 # Toy guard: version 1 against version 2
 
+`mutation-plan.json` also uses these hooks as an explicit synthetic mutation
+evaluation: v2 should be killed, while the unchanged v1 control survives. See
+[mutation sensitivity](../../docs/MUTATION-SENSITIVITY.md) for the command and
+its baseline sanity checks. The unchanged control intentionally makes exit 1.
+
 `guard_v1.py` and `guard_v2.py` are two versions of a small PreToolUse hook.
 Version 2 exempts `--help` and dry runs, and matches flag prefixes, but it
 drops `git clean` from its list. Replaying both over the charter corpus shows
