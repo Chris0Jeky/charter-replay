@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Aggregate document validation now rejects inconsistent event totals and gates,
+  and malformed gate entries raise a fixed `AggregateInputError` instead of a
+  `TypeError`. Valid `aggregate.v1` JSON and Markdown bytes are unchanged.
 - **Kernel `report.md` renders free text literally (report-rendering change).** The
   event table cells (event id, classification, baseline and candidate effect and
   reason) and the source-failure lines now go through the same `markdown_literal`

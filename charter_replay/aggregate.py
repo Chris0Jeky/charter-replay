@@ -43,8 +43,8 @@ AGGREGATE_MARKER = f"<!-- charter-replay:{AGGREGATE_VERSION} -->"
 AGGREGATE_JSON = "aggregate.json"
 AGGREGATE_MD = "aggregate.md"
 AGGREGATE_FILES = (AGGREGATE_JSON, AGGREGATE_MD)
-# Sized for the whole fixed vocabulary at the largest count; a test renders that
-# worst case, so the bound can be exceeded only when a vocabulary grows.
+# Sized for the whole fixed vocabulary at maximum count digit width; a test
+# renders that worst case, so vocabulary growth is detected.
 MAX_JSON_BYTES = 6 * 1024
 MAX_MARKDOWN_BYTES = 4 * 1024
 MAX_COUNT = 999_999_999_999
@@ -292,7 +292,7 @@ def _mapping(value: object, names: tuple[str, ...]) -> dict[str, int]:
 
 
 def validate_document(document: object) -> dict[str, Any]:
-    """Require exactly the fixed shape, so a renderer can only emit vocabulary."""
+    """Require fixed vocabulary, complete event counts and a consistent gate."""
     keys = {
         "schema_version",
         "gate",
@@ -315,8 +315,11 @@ def validate_document(document: object) -> dict[str, Any]:
         chosen = gate[name]
         if (
             not isinstance(chosen, list)
+            or any(
+                not isinstance(item, str) or item not in RUN_GATE_CLASSES
+                for item in chosen
+            )
             or len(set(chosen)) != len(chosen)
-            or any(item not in RUN_GATE_CLASSES for item in chosen)
         ):
             raise AggregateInputError("aggregate document is not the fixed shape")
     outcomes = document["hook_outcomes"]
@@ -327,7 +330,7 @@ def validate_document(document: object) -> dict[str, Any]:
     failures = document["source_failures"]
     if not isinstance(failures, dict) or set(failures) != set(SIDES):
         raise AggregateInputError("aggregate document is not the fixed shape")
-    return {
+    result = {
         "schema_version": AGGREGATE_VERSION,
         "gate": {
             "status": gate["status"],
@@ -342,6 +345,22 @@ def validate_document(document: object) -> dict[str, Any]:
             side: _mapping(failures[side], FAILURE_KEYS) for side in SIDES
         },
     }
+    events = result["events"]
+    if (
+        sum(result["counts"].values()) != events
+        or sum(result["case_classes"].values()) != events
+    ):
+        raise AggregateInputError("aggregate counts do not cover every event")
+    if outcomes is not None and any(
+        sum(outcomes[side].values()) != events for side in SIDES
+    ):
+        raise AggregateInputError("hook outcomes do not cover every event")
+    triggered = [name for name in gate["fail_on"] if result["counts"][name] > 0]
+    has_failure = any(any(result["source_failures"][side].values()) for side in SIDES)
+    status = "error" if has_failure else "fail" if triggered else "pass"
+    if gate["triggered"] != triggered or gate["status"] != status:
+        raise AggregateInputError("aggregate gate does not match its counts")
+    return result
 
 
 def render_json(document: dict[str, Any]) -> bytes:
