@@ -249,6 +249,21 @@ A generic executable must be
 relocatable enough to run from the snapshot; adjacent loader libraries are copied as unbound
 runtime dependencies, and Python uses its host base prefix for its unbound standard library. If the
 captured executable cannot start, replay fails closed instead of falling back to the original path.
+
+Recognized Windows CPython virtualenv launchers are rejected during source loading
+with input-invalid exit `2`, before policy invocation or report publication. The runner
+recognizes its current virtualenv controller launcher and exact-byte matches to known
+launcher templates in its Python installation, including copied aliases. It does not
+classify arbitrary executables by their basename or a nearby `pyvenv.cfg`. Launchers
+from other installations that do not match those known bytes remain subject to the
+generic relocation requirement and may fail closed during invocation. The launcher
+needs `pyvenv.cfg` to locate its base interpreter; copying that configuration alone
+would execute an interpreter outside the bound snapshot. Run the controller with
+native Python (for example, `py -3.14 -m charter_replay.cli replay ...` on Windows)
+and select that native interpreter as the process executable. Accepted process
+identities remain v9; no interpreter substitution or virtualenv configuration copying
+occurs.
+
 External installed dependencies, files outside the policy tree, network responses, and other host
 metadata remain outside the identity; access/change/birth times and filesystem object identities
 are not normalized. Callers that depend on them must isolate and record that environment.

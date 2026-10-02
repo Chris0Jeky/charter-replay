@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Recognized Windows CPython virtualenv launchers now fail process-source admission
+  with a path-free input error before snapshots, policy invocation or report publication.
+  Use a native replay controller and native process interpreter. Accepted v9 identities
+  and snapshot guarantees remain unchanged. Real Windows native/venv regression
+  coverage includes copied aliases and both argv encodings; CI adds Windows Python 3.14.
 - Aggregate document validation now rejects inconsistent event totals and gates,
   and malformed gate entries raise a fixed `AggregateInputError` instead of a
   `TypeError`. Valid `aggregate.v1` JSON and Markdown bytes are unchanged.
