@@ -1,0 +1,17 @@
+{
+  "tier": 3,
+  "name": "workshop",
+  "authority": {
+    "push": "free",
+    "merge": "free"
+  },
+  "flags": {
+    "sensitive_data": false,
+    "wave_mode": false,
+    "dormant_production": false,
+    "relaxed_work_loss_guards": false
+  },
+  "human_todo": null,
+  "last_reviewed": "2026-10-07",
+  "notes": "Owner decision 2026-10-07 (estate-hub session): T3. Measured signals: releases v0.1.0 and v0.1.1 with assets, release.yml, action-selftest.yml and a composite GitHub Action other repositories can consume. Changes that alter the Action's inputs, outputs or behaviour are consumer-facing: version them and note them in the release notes."
+}
