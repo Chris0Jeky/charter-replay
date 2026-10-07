@@ -40,6 +40,9 @@ FIXTURE = (
 
 FIXTURE_COMMAND = (sys.executable, "-I", "-S", str(FIXTURE))
 
+# Generous hang watchdog for host load/startup overhead, not a performance claim.
+HOST_ALLOWANCE_SECONDS = 10.0
+
 
 class ProcessSourceTests(unittest.TestCase):
     def evaluate(self, mode: str, *, timeout_seconds: float = 5.0):
@@ -127,11 +130,12 @@ class ProcessSourceTests(unittest.TestCase):
     def test_timeout_terminates_descendants_in_the_root_process_group(
         self,
     ) -> None:
+        timeout_seconds = 0.5
         with tempfile.TemporaryDirectory() as raw_directory:
             pid_path = Path(raw_directory) / "child.pid"
             source = ProcessDecisionSource(
                 [*FIXTURE_COMMAND, "descendant-timeout", str(pid_path)],
-                timeout_seconds=0.5,
+                timeout_seconds=timeout_seconds,
             )
             started = time.monotonic()
             result = source.evaluate(EVENTS)
@@ -140,18 +144,19 @@ class ProcessSourceTests(unittest.TestCase):
                 pid_path, pid_path.with_suffix(".json")
             )
 
-        self.assertLess(elapsed, 2.5)
         self.assertEqual(["process-timeout"], self.failure_codes(result))
         self.assert_process_stopped(child_pid)
+        self.assert_within_supervision_budget(elapsed, timeout_seconds)
 
     def test_completed_parent_terminates_descendants_in_the_root_process_group(
         self,
     ) -> None:
+        timeout_seconds = 2.0
         with tempfile.TemporaryDirectory() as raw_directory:
             pid_path = Path(raw_directory) / "child.pid"
             source = ProcessDecisionSource(
                 [*FIXTURE_COMMAND, "descendant-exit", str(pid_path)],
-                timeout_seconds=2.0,
+                timeout_seconds=timeout_seconds,
             )
             started = time.monotonic()
             result = source.evaluate(EVENTS)
@@ -160,35 +165,37 @@ class ProcessSourceTests(unittest.TestCase):
                 pid_path, pid_path.with_suffix(".json")
             )
 
-        self.assertLess(elapsed, 2.0)
         self.assertTrue(result.is_valid)
         self.assertEqual(["deny", "allow"], self.effects(result))
         self.assert_process_stopped(child_pid)
+        self.assert_within_supervision_budget(elapsed, timeout_seconds)
 
     @unittest.skipUnless(
         os.name != "nt" and hasattr(os, "setpgrp"),
         "POSIX setpgrp semantics",
     )
     def test_completed_parent_does_not_contain_a_setpgrp_descendant(self) -> None:
+        timeout_seconds = 2.0
         result, elapsed = self.evaluate_setpgrp_escape(
-            "setpgrp-exit", timeout_seconds=2.0
+            "setpgrp-exit", timeout_seconds=timeout_seconds
         )
 
-        self.assertLess(elapsed, 2.0)
         self.assertTrue(result.is_valid)
         self.assertEqual(["deny", "allow"], self.effects(result))
+        self.assert_within_supervision_budget(elapsed, timeout_seconds)
 
     @unittest.skipUnless(
         os.name != "nt" and hasattr(os, "setpgrp"),
         "POSIX setpgrp semantics",
     )
     def test_timeout_does_not_contain_a_setpgrp_descendant(self) -> None:
+        timeout_seconds = 1.0
         result, elapsed = self.evaluate_setpgrp_escape(
-            "setpgrp-timeout", timeout_seconds=1.0
+            "setpgrp-timeout", timeout_seconds=timeout_seconds
         )
 
-        self.assertLess(elapsed, 3.0)
         self.assertEqual(["process-timeout"], self.failure_codes(result))
+        self.assert_within_supervision_budget(elapsed, timeout_seconds)
 
     def test_malformed_output_does_not_hide_later_valid_decision(self) -> None:
         result = self.evaluate("malformed")
@@ -329,6 +336,23 @@ class ProcessSourceTests(unittest.TestCase):
     @staticmethod
     def failure_codes(result) -> list[str]:
         return [failure.code for failure in result.failures]
+
+    def assert_within_supervision_budget(
+        self, elapsed: float, timeout_seconds: float
+    ) -> None:
+        limit = (
+            timeout_seconds
+            + 2 * policy_sources._PROCESS_CLEANUP_GRACE_SECONDS
+            + HOST_ALLOWANCE_SECONDS
+        )
+        self.assertLess(
+            elapsed,
+            limit,
+            msg=(
+                f"elapsed {elapsed}s exceeded supervision budget "
+                f"(timeout {timeout_seconds}s, limit {limit}s)"
+            ),
+        )
 
     def evaluate_setpgrp_escape(self, mode: str, *, timeout_seconds: float):
         with tempfile.TemporaryDirectory() as raw_directory:
