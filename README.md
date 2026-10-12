@@ -1,5 +1,7 @@
 # charter-replay
 
+<p align="center"><img src="docs/assets/charter-replay-loop.svg" alt="charter-replay workflow, animated" width="100%"></p>
+
 Replay a pinned command corpus through two PreToolUse hooks and fail the gate when the candidate silently allows what the baseline blocked.
 
 [![CI](https://github.com/Chris0Jeky/charter-replay/actions/workflows/ci.yml/badge.svg)](https://github.com/Chris0Jeky/charter-replay/actions/workflows/ci.yml)
