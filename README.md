@@ -1,7 +1,5 @@
 # charter-replay
 
-![charter-replay](docs/assets/hero.svg)
-
 Replay a pinned command corpus through two PreToolUse hooks and fail the gate when the candidate silently allows what the baseline blocked.
 
 [![CI](https://github.com/Chris0Jeky/charter-replay/actions/workflows/ci.yml/badge.svg)](https://github.com/Chris0Jeky/charter-replay/actions/workflows/ci.yml)
@@ -38,8 +36,6 @@ Review a guard change the same way as any other control: pin the inputs, run bot
 - **Zero runtime dependencies.** Python 3.11+ on Linux, macOS and Windows. CI covers 3.11 and 3.13 on all three, plus Windows 3.14.
 
 ## Architecture
-
-![Architecture](docs/assets/architecture.svg)
 
 The compare layer does not inspect command grammar or runtime names. The adapter owns payload construction and reply classification. The invocation layer owns subprocesses, timeout cleanup, environment and cwd. Renderers consume one result model and never run a hook.
 
