@@ -1,56 +1,157 @@
 # charter-replay
 
-Compare coding-agent command policies against a pinned replay corpus and catch decision regressions before release.
+<p align="center"><img src="docs/assets/charter-replay-loop.svg" alt="charter-replay workflow, animated" width="100%"></p>
+
+Replay a pinned command corpus through two PreToolUse hooks and fail the gate when the candidate silently allows what the baseline blocked.
+
+[![CI](https://github.com/Chris0Jeky/charter-replay/actions/workflows/ci.yml/badge.svg)](https://github.com/Chris0Jeky/charter-replay/actions/workflows/ci.yml)
+[![Action self-test](https://github.com/Chris0Jeky/charter-replay/actions/workflows/action-selftest.yml/badge.svg)](https://github.com/Chris0Jeky/charter-replay/actions/workflows/action-selftest.yml)
+[![Review acceptance](https://github.com/Chris0Jeky/charter-replay/actions/workflows/review-acceptance.yml/badge.svg)](https://github.com/Chris0Jeky/charter-replay/actions/workflows/review-acceptance.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
 ![A replay of two versions of a guard hook](docs/demo.gif)
+
+## What it is
+
+Coding-agent hooks decide whether a command may proceed. Change one rule, one regex, one `--help` exemption, and a deny becomes an allow. The runtime will not tell you. charter-replay will.
+
+It is a **decision-replay harness**. It feeds recorded command events to a baseline hook and a candidate hook the way Claude Code, Codex, or Gemini CLI would: shell-free argv, PreToolUse JSON on stdin, a fresh workspace as cwd. Then it diffs the effects — allow, deny, indeterminate — by event id, case class and family, and exits 1 when a class you named appears (default: newly allowed or newly indeterminate).
+
+It is not a live interceptor, a policy language, a sandbox, a safety proof, or a benchmark. The runner never executes corpus command strings. It executes the hook you pointed at, with your privileges. Reports describe decision changes. They never claim that an original command was safe, unsafe, executed, or reproduced.
+
+Review a guard change the same way as any other control: pin the inputs, run both sides, publish a diff you can argue with. The kernel is exact-byte and fail-closed. The adapters are documentation-derived models, not certifications against a running binary.
+
+## Features
+
+- **`hooks`** — record two PreToolUse command hooks over one captured corpus and compare them through the kernel. Default gate: `newly-allowed`, `newly-indeterminate`.
+- **`record`** — run one hook and write a recorded decision source (`recorded:<path>`) the kernel `replay` command accepts.
+- **`replay` / `validate`** — the replay v0 kernel: compare two decision streams (recorded files or `process:` / `process-json:` programs) over a SHA-256-bound corpus.
+- **`repeat`** — record one hook 2–50 times and classify each event as `stable`, `reason-varies`, `outcome-varies`, or `effect-varies`, keyed by hook-context id.
+- **`mutate`** — bounded toy-hook mutation sensitivity: explicit `mutation-plan.v1`, two healthy baseline passes, killed / survived / invalid / timeout accounting. Corpus sensitivity, not a security proof.
+- **`variants`** — derive or byte-verify a bounded POSIX variant pack (`posix-external.v1`). Generates strings only; never a shell, a hook, or a network call.
+- **`import`** — build a private corpus from local Claude Code and Codex transcripts, with credential and identity scrubbing. Output stays private even after scrubbing; never commit it.
+- **`aggregate`** — rebuild verified counts-only `aggregate.v1` (no event ids, commands, reasons, paths). `hooks` already writes it; a leak check refuses the file rather than publish free text.
+- **Runtime adapters** — built-in registry, no plugin loader: `claude` (`claude-pretooluse.v1`), `codex` (`codex-pretooluse.v1`), `codex-legacy` (`codex-legacy-floor.v1`), `gemini` (`gemini-beforetool.v1`). See [runtime contracts](docs/RUNTIME_CONTRACTS.md).
+- **Reports** — transactional `report.json`, `report.md`, standalone `report.html` (no external assets; readable with JavaScript off), bounded `pr-comment.md` / `pr-comment-aggregate.md`, plus hook `summary.json` / `summary.md`.
+- **Least-privilege Action** — composite `action.yml` runs `hooks` in the caller's job: no token permissions, no upload, no comment. Pin by commit SHA to pin the tool revision. [docs/ACTION.md](docs/ACTION.md).
+- **Zero runtime dependencies.** Python 3.11+ on Linux, macOS and Windows. CI covers 3.11 and 3.13 on all three, plus Windows 3.14.
+
+## Architecture
+
+The compare layer does not inspect command grammar or runtime names. The adapter owns payload construction and reply classification. The invocation layer owns subprocesses, timeout cleanup, environment and cwd. Renderers consume one result model and never run a hook.
+
+```mermaid
+flowchart LR
+    subgraph inputs [Inputs]
+      Transcripts["import<br/>Claude Code + Codex transcripts"]
+      Seeds["Reviewed seeds"]
+      Variants["variants<br/>posix-external.v1"]
+      Corpus["Corpus pack<br/>events.jsonl + cases.jsonl<br/>SHA-256 manifest"]
+    end
+    Transcripts --> Corpus
+    Seeds --> Variants
+    Variants --> Corpus
+    Corpus --> App["app.py"]
+    App --> Hooks["hooks / record / repeat / mutate"]
+    Hooks --> Adapters["adapters/<br/>claude · codex · gemini"]
+    Adapters --> Invoke["hooks.py + policy_sources.py<br/>shell-free supervised process"]
+    Invoke --> Context["hook-context.v1"]
+    Invoke --> Decisions["decisions.jsonl<br/>outcomes.jsonl"]
+    Decisions --> Kernel["cli.py + compare.py"]
+    Corpus --> Kernel
+    Kernel --> Pub["publication.py"]
+    Pub --> Views["JSON / Markdown / HTML<br/>PR text + aggregate.v1"]
+    Views --> Gate["exit 0 / 1 / 2 / 3"]
+```
+
+Module map: [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md). Proposed direction (not a claim that every heading is shipped): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Quick start
+
+Python 3.11+ on `PATH`. From a checkout:
 
 ```bash
 python -m pip install .
 ```
 
-Published wheel/source archives, verification and rollback instructions:
-[release procedure](docs/RELEASING.md).
+Published wheel and source archives, verification and rollback: [docs/RELEASING.md](docs/RELEASING.md). The optional PyPI job in [`.github/workflows/release.yml`](.github/workflows/release.yml) runs only when the owner has registered a trusted publisher and set `PYPI_TRUSTED_PUBLISHER=true`; a skipped job means GitHub release assets only.
+
+Validate the bundled charter (50 events, exact-byte manifest):
 
 ```bash
-charter-replay hooks   --baseline "python examples/toy-guard/guard_v1.py"   --candidate "python examples/toy-guard/guard_v2.py"   --corpus charter_replay/corpora/charter   --output reports/demo
+charter-replay validate --corpus charter_replay/corpora/charter
 ```
+
+Replay the checked-in toy guards. Version 2 exempts `--help` and dry runs, and it drops `git clean` from its deny list. The default gate fails:
+
+```bash
+charter-replay hooks \
+  --baseline "python examples/toy-guard/guard_v1.py" \
+  --candidate "python examples/toy-guard/guard_v2.py" \
+  --corpus charter_replay/corpora/charter \
+  --output reports/demo
+```
+
+This is the command [CI](.github/workflows/ci.yml) installs and runs. It exits **1**. `summary.json` reports `newly-allowed: 4`, `newly-denied: 1`, `unchanged: 45`. Checked-in copy of that result: [examples/toy-guard/report/summary.md](examples/toy-guard/report/summary.md). The hook argv's first word is the interpreter on `PATH`; CI provides `python`, a host that only has `python3` should use that.
 
 > This re-evaluates recorded command events and decisions. It does not reproduce the original agent, environment, shell effects, or operating-system boundary.
 
-To run it on pull requests, use the least-privilege composite Action: see
-[docs/ACTION.md](docs/ACTION.md). For a private corpus, publish only the
-verified counts-only `aggregate.v1` (written by `hooks`, or rebuilt with
-`charter-replay aggregate`; Action input `summary-mode: aggregate`): see
-[docs/AGGREGATE.md](docs/AGGREGATE.md).
+Each hook runs once per command, as the runtime runs it: shell-free argv, the PreToolUse JSON on stdin, `cwd` inside a fresh workspace (optionally copied from `--workspace`), and `CLAUDE_PROJECT_DIR` set to that workspace (not under `--runtime codex`). A hook command is a JSON array or POSIX-quoted words. On Windows, `py -3` works as the interpreter and forward slashes avoid quoting trouble.
 
-## Measure a hook
+Open `reports/demo/report/report.html` in a browser for the offline review view. For a pull request, use the Action:
 
-To measure corpus sensitivity to controlled toy hook changes, use
-`charter-replay mutate` with an explicit bounded plan. It checks the baseline
-twice and separates killed/survived mutants from invalid/timeout recordings.
-See [mutation sensitivity](docs/MUTATION-SENSITIVITY.md) for the synthetic
-example, limits and score denominator.
+```yaml
+- uses: Chris0Jeky/charter-replay@<sha>
+  with:
+    baseline: python hooks/guard_main.py
+    candidate: python hooks/guard.py
+```
 
-`charter-replay hooks` runs two PreToolUse command hooks over a corpus and
-diffs their decisions: newly blocked, newly allowed, unchanged, and newly
-indeterminate (errors and timeouts), broken down by case class and family. It
-exits 1 when a class named by `--fail-on` appears (default: newly allowed or
-newly indeterminate). `record` runs one hook and writes a recorded decision
-source that the kernel `replay` command accepts as `recorded:<path>`.
+Never `pull_request_target`. Untrusted candidates replay only public synthetic corpora; a report produced in the same job as an untrusted hook is evidence of that job's claims only. Details and inputs: [docs/ACTION.md](docs/ACTION.md).
 
-Each hook runs once per command, as the runtime runs it: shell-free argv, the
-PreToolUse JSON on stdin, `cwd` inside a fresh workspace (optionally copied
-from `--workspace`), and `CLAUDE_PROJECT_DIR` set to that workspace (not under `--runtime codex`). A hook
-command is a JSON array or POSIX-quoted words. On Windows, `py -3` works as the
-interpreter and forward slashes avoid quoting trouble.
+For a private corpus, publish only the verified counts-only `aggregate.v1` (`hooks` writes it; rebuild with `charter-replay aggregate`; Action input `summary-mode: aggregate`): [docs/AGGREGATE.md](docs/AGGREGATE.md).
 
-Each recording also writes `hook-context.json`, an input-only identity for what
-the hook was given (see [docs/HOOK-CONTEXT.md](docs/HOOK-CONTEXT.md)); it is a
-consistency key, not execution authentication.
+### Mutation and kernel replay
 
-`charter-replay repeat` records one hook N times (2 to 50) and classifies each
-event as stable or as varying in reason, outcome or effect, keyed by that context
-ID; see [docs/REPEAT-STABILITY.md](docs/REPEAT-STABILITY.md).
+```bash
+charter-replay mutate \
+  --plan examples/toy-guard/mutation-plan.json \
+  --corpus charter_replay/corpora/charter \
+  --output reports/mutation
+```
+
+Expected on the toy plan: one killed mutant, one survivor, score 1/2, exit 1. Limits and denominator: [docs/MUTATION-SENSITIVITY.md](docs/MUTATION-SENSITIVITY.md).
+
+Kernel comparison of already-recorded decisions (no hook runs):
+
+```bash
+charter-replay replay \
+  --baseline recorded:examples/toy-guard/report/baseline/decisions.jsonl \
+  --candidate recorded:examples/toy-guard/report/candidate/decisions.jsonl \
+  --corpus charter_replay/corpora/charter \
+  --output reports/toy-guard-recorded
+```
+
+`python -m charter_replay.app` is the same entry as the `charter-replay` console script. `python -m charter_replay.cli` is the kernel only (`replay`, `validate`).
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `hooks` | Record baseline and candidate hooks, compare, write summary + aggregate + report |
+| `record` | Record one hook as a `recorded:` source |
+| `replay` | Compare two sources over a corpus (kernel) |
+| `validate` | Admit a corpus manifest and its exact-byte files |
+| `repeat` | Measure one hook's variation over N recordings |
+| `mutate` | Evaluate an explicit toy mutation plan |
+| `variants generate \| verify \| coverage \| review` | Bounded POSIX packs and capture-bound review |
+| `import` | Private corpus from local transcripts |
+| `aggregate` | Rebuild `aggregate.v1` from a report directory |
+
+Exit codes are shared: **0** configured gate passed, **1** a named change class is present, **2** invalid input or broken exact-byte binding, **3** hook/source/output failure after a comparison can be formed. Exit 3 beats exit 1. Both sides are admitted before either hook runs. [docs/HOOK_EXECUTION.md](docs/HOOK_EXECUTION.md).
+
+## Hook replies
 
 | hook reply | outcome | replay effect |
 |---|---|---|
@@ -66,235 +167,97 @@ ID; see [docs/REPEAT-STABILITY.md](docs/REPEAT-STABILITY.md).
 | executable cannot start | start-failed | indeterminate |
 | more than `--hook-output-limit` bytes (default 1 MiB) on stdout or stderr | output-limit | indeterminate |
 
-An `output-limit` outcome kills the hook's whole process family, is a source
-failure (`hook-output-limit`, exit 3), and its reason names the stream and the
-limit, never the output. `--hook-output-limit BYTES` (1024 to 67108864) is
-recorded in `hook-context.json`; see [docs/HOOK_EXECUTION.md](docs/HOOK_EXECUTION.md).
+`--hook-output-limit` is 1024–67108864 bytes per stream. Overflow kills the hook's process family, is a `hook-output-limit` source failure (exit 3), and the reason names the stream and the limit, never the output.
 
-The outcome is the prefix of each recorded reason, and `outcomes.jsonl` keeps
-the exit code and latency per event. The runtime itself lets a command proceed
-after a crash or timeout; indeterminate keeps those visible instead. With
-`--runtime codex-legacy`, `ask` becomes deny, the v0.1 floor kept so old
-recordings reproduce; it is not fail-safe, because Codex fails the hook and lets
-the call continue.
+`--runtime codex` is `codex-pretooluse.v1`, modelled on Codex hooks documentation (not certified against a running Codex). Unsupported replies (`ask`, legacy `approve`, `continue: false`, `stopReason`, `suppressOutput`), malformed JSON, an `allow` without the rewrite Codex requires, and exit 2 without a stderr reason are `invalid-output`. `--ask-as` has no effect. No `CLAUDE_PROJECT_DIR`. `--runtime codex-legacy` keeps the v0.1 floor so old recordings reproduce; it is not fail-safe.
 
-`--runtime codex` is the versioned `codex-pretooluse.v1` contract, modelled on
-the Codex hooks documentation (not certified against a running Codex). Its payload
-adds `turn_id` and a null `transcript_path`, and no `CLAUDE_PROJECT_DIR` is set.
-Replies Codex documents as unsupported (`ask`, legacy `approve`, `continue:
-false`, `stopReason`, `suppressOutput`), malformed or unknown-field JSON, an
-`allow` (which Codex supports only with an `updatedInput` rewrite) and exit 2
-without a stderr reason are `invalid-output` and indeterminate, so the runtime's
-fail-open shows up as exit 3 rather than as a block. `--ask-as` has no effect
-under `codex`, since `ask` is not a decision there. The context id in
-`hook-context.json` differs between the two runtimes. Reply table and sources:
-[docs/RUNTIME_CONTRACTS.md](docs/RUNTIME_CONTRACTS.md).
+`--runtime gemini` is `gemini-beforetool.v1`, modelled on Gemini CLI hooks documentation and upstream source (not certified against a running Gemini CLI). `decision` deny/block and exit 2 deny; `continue: false` is `stop`; other exits, non-JSON stdout, input rewrites and `ask` are indeterminate.
 
-`--runtime gemini` is `gemini-beforetool.v1`, modelled on the Gemini CLI hooks
-documentation and upstream source (not certified against a running Gemini CLI): a
-`BeforeTool` payload with `run_shell_command`, `decision` deny/block and exit 2 as
-denies, `continue: false` as `stop`, and other exits, non-JSON stdout, input
-rewrites and `ask` as indeterminate. `--ask-as` has no effect under `gemini`.
+Reply table and sources: [docs/RUNTIME_CONTRACTS.md](docs/RUNTIME_CONTRACTS.md). Each recording writes `hook-context.json`, an input-only identity for what the hook was given — a consistency key, not execution authentication: [docs/HOOK-CONTEXT.md](docs/HOOK-CONTEXT.md).
 
-`charter-replay import` builds a private corpus from local Claude Code and
-Codex transcripts. It scrubs credentials, home paths, the local user, host and
-Git identity, email addresses, private hosts and repository names, and it
-refuses to write inside a Git work tree unless Git ignores the target. The
-output is private even after scrubbing: never commit it.
+## Corpora
 
-## Kernel reference
+The runner never executes these command strings. Classification comes only from validated baseline and candidate `PolicyDecision` effects keyed by `event_id`.
 
-Replay v0 compares two policy-decision streams for a small, privacy-safe command corpus. It is a
-deterministic comparison tool, not a live command interceptor, policy-authoring framework, safety
-proof, or benchmark.
+| pack | events | what it is |
+|---|---:|---|
+| [`charter_replay/corpora/charter`](charter_replay/corpora/charter/corpus-manifest.json) | 50 | 20 synthetic dangerous, 20 synthetic benign, 10 historical/opaque shapes. Inert strings. |
+| [`charter_replay/corpora/charter-v0.2`](charter_replay/corpora/charter-v0.2/corpus-manifest.json) | 494 | v0.1 prefix unchanged, then more synthetic cases (297 dangerous, 187 benign, 10 opaque). |
+| [`examples/packs/charter-posix-v1.json`](examples/packs/charter-posix-v1.json) | recipe | 50 seeds, 54 derived, 96 skipped under `posix-external.v1`. |
 
-The checked-in charter has 50 inert command strings: 20 synthetic catastrophe-boundary cases, 20
-synthetic non-executing near-misses, and 10 fully re-authored historical/opaque shapes. The runner
-never executes those command strings. Classification comes only from validated baseline and
-candidate `PolicyDecision` effects keyed by `event_id`.
+v1 case metadata cannot prove independent labeling. Metrics say "agreement with supplied v1 labels", not "safety accuracy": [docs/METRICS.md](docs/METRICS.md).
 
-## Quick start
+`charter-replay import` scrubs credentials, home paths, the local user, host and Git identity, email addresses, private hosts and repository names, and refuses to write inside a Git work tree unless Git ignores the target. Treat the output as private. Open follow-ups on that path: [#57](https://github.com/Chris0Jeky/charter-replay/issues/57), [#58](https://github.com/Chris0Jeky/charter-replay/issues/58).
 
-Validate the exact-byte corpus manifest:
+## Kernel process sources
 
-```text
-python -m charter_replay.cli validate --corpus charter_replay/corpora/charter
-```
+`replay` accepts `recorded:<path>`, `process:executable,arg,policy-file`, or `process-json:<JSON-array>`. Commas in `process:` are separators; quotes and backslashes have no escaping meaning. Use `process-json:` when a value contains a comma: exactly one JSON array of strings, first the executable, last the policy file.
 
-Run the clean reference comparison:
+Process identity is `process-policy-identity.v9`: executable basename and resolved target bytes/mode, entry-policy bytes, the policy-parent tree, timeout, fixed environment, POSIX `0700` runner-owned directory modes, an opaque SHA-256 of the resolved snapshot parent, and a fixed snapshot mtime of `946684800000000000` ns (2000-01-01T00:00:00Z). Immediately before each process runs, the runner copies the bound tree into a private snapshot, verifies it, and launches only from the snapshot paths.
 
-```text
-python -m charter_replay.cli replay --baseline recorded:charter_replay/fixtures/legacy-decisions.jsonl --candidate process:python,charter_replay/tests/fixtures/process_policies/reference_candidate.py --corpus charter_replay/corpora/charter/events.jsonl --output .local/replay-proof
-```
+The snapshot is reproducibility containment, not an operating-system sandbox. A hostile process running as the same OS user may still discover or rewrite temporary storage. Policy behaviour after process start remains outside the snapshot guarantee. On Windows an event-gated supervisor enters a kill-on-close Job Object. On POSIX the policy root starts in a new session and root process group; descendants that `setsid` / `setpgid` leave v0 containment. Process-source output has no byte quota (hook recording does). Overlapping evaluations of the same identity are not serialized. Recognized Windows CPython virtualenv launchers are rejected at admission (exit 2); use a native interpreter.
 
-The command writes `run-manifest.json`, `report.json`, and `report.md`. The Markdown report keeps a
-JSON argv array as the portable reproduction source of truth and labels its additional rendering
-as either POSIX `sh` or Windows PowerShell; it never claims `cmd.exe` compatibility. Arguments
-outside the proved nonempty, single-line shell subset keep the structured argv but omit the shell
-form. Path-bearing reproduction material remains outside deterministic `report.json`.
+Despite its compatibility filename, [`charter_replay/fixtures/legacy-decisions.jsonl`](charter_replay/fixtures/legacy-decisions.jsonl) is a synthetic freeze-candidate expectation for the curated charter. It was not captured by executing a private legacy dispatcher. The reference candidate maps the 50 reviewed fixture event IDs to expected effects; it does not parse command text.
 
-Exit `0` means the configured gate passed, `1` means a configured change class was present, `2`
-means an input or exact-byte binding was invalid, and `3` means a policy process failed after a
-reportable comparison could be formed.
+## Limits
 
-Run the authoritative dependency-free test lane with:
+- Hooks and `process:` policies are unsandboxed programs. Run only code you trust; isolate them yourself if you need containment.
+- Runtime adapters are documentation-derived. None is certified against a running Claude, Codex, or Gemini binary.
+- A same-job report next to an untrusted hook is not a trusted artifact. Do not point a fork candidate at a private corpus.
+- `aggregate.v1` omits free text; small counts can still disclose information. It is not differential privacy.
+- Process identities are host-context evidence, not portable cross-host correlation keys.
+- Reports never claim an original command was safe.
 
-```text
+Security boundary and reporting: [SECURITY.md](SECURITY.md).
+
+## Tech stack
+
+| Piece | What is actually there |
+|---|---|
+| Language | Python 3.11+, stdlib only at runtime (`requires-python = ">=3.11"`, `dependencies = []`) |
+| Packaging | setuptools ≥77, console script `charter-replay = charter_replay.app:main` |
+| Dev extras | `black==26.3.1`, `ruff==0.15.13` |
+| Schemas | `command-event.v1`, `policy-decision.v1`, `charter-case.v1`, `mutation-plan.v1`, `hook-context.v1`, `aggregate.v1` |
+| CI | [ci.yml](.github/workflows/ci.yml) unittest + README example + lint + wheel hygiene; [action-selftest.yml](.github/workflows/action-selftest.yml) three-OS `uses: ./`; [review-acceptance.yml](.github/workflows/review-acceptance.yml) Playwright HTML + isolated wheel; [release.yml](.github/workflows/release.yml) GitHub assets |
+| Action | composite `action.yml`, install from checkout, no token |
+
+## Status and roadmap
+
+**0.1.1**, Development Status :: 3 - Alpha. Package version stays here until the maintainer cuts a release. Changelog: [CHANGELOG.md](CHANGELOG.md).
+
+Shipped on `main` (roadmap ids, evidence is the linked PR): runtime adapter registry (R02-1), failure admission (R02-2), per-event workspaces (R02-3), label agreement and observational latency (R02-4), HTML / PR text and verified variant review (R02-5), bounded POSIX variants (R02-6), least-privilege Action (R03-1), `aggregate.v1` (R03-2), `codex-pretooluse.v1` (R03-3), `gemini-beforetool.v1` (R03-4), `hook-context.v1` first increment (R04-1), repeat stability (R04-3), bounded mutation sensitivity (R05-3), per-stream output limit first increment (R08-2).
+
+Still planned, not shipped: split `policy_sources.py` (R04-2, deferred [#43](https://github.com/Chris0Jeky/charter-replay/issues/43)); independent case-evidence and a human-reviewed seed benchmark (R05-1, R05-2); `action-event.v1` for file / network / MCP (R06); digest-verified pack install and private aggregate trends (R07); reviewed Windows transforms (R08-1); remaining output/disk budget work (R08-2). Delivery order: [docs/ROADMAP.md](docs/ROADMAP.md).
+
+Open defects worth knowing about: import can follow ignored output symlinks ([#57](https://github.com/Chris0Jeky/charter-replay/issues/57)); import corpora are world-readable on POSIX ([#58](https://github.com/Chris0Jeky/charter-replay/issues/58)); intermittent macOS `start-failed` under synthetic overflow ([#49](https://github.com/Chris0Jeky/charter-replay/issues/49)); Windows descendant-cleanup elapsed assertion on a loaded host ([#52](https://github.com/Chris0Jeky/charter-replay/issues/52)).
+
+## Contributing
+
+- Open an issue first for anything beyond a small fix.
+- One purpose per pull request. Synthetic fixtures only.
+- Stay inside decision replay: no live interception, no policy language, no new decision effects.
+- Never include real secrets, private commands, malware, or instructions for bypassing someone else's controls.
+
+```bash
 python -m unittest discover -s charter_replay/tests -v
+python -m ruff check charter_replay examples
+python -m black --check charter_replay examples
 ```
 
-After installing the owner-approved development requirements, prove Pytest compatibility with:
+Full rules: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-```text
-python -m pytest -q charter_replay/tests
-python -m pytest -q charter_replay/tests/unit charter_replay/tests/contract
-```
+## Links
 
-## Process argument encodings
+| | |
+|---|---|
+| Architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md) |
+| Runtime contracts | [docs/RUNTIME_CONTRACTS.md](docs/RUNTIME_CONTRACTS.md) |
+| Hook execution / context | [docs/HOOK_EXECUTION.md](docs/HOOK_EXECUTION.md) · [docs/HOOK-CONTEXT.md](docs/HOOK-CONTEXT.md) |
+| Reports / aggregate / Action | [docs/REVIEW_REPORTS.md](docs/REVIEW_REPORTS.md) · [docs/AGGREGATE.md](docs/AGGREGATE.md) · [docs/ACTION.md](docs/ACTION.md) |
+| Variants / mutation / repeat | [docs/VARIANTS.md](docs/VARIANTS.md) · [docs/MUTATION-SENSITIVITY.md](docs/MUTATION-SENSITIVITY.md) · [docs/REPEAT-STABILITY.md](docs/REPEAT-STABILITY.md) |
+| Roadmap / releasing | [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/RELEASING.md](docs/RELEASING.md) · [CHANGELOG.md](CHANGELOG.md) |
+| Security / contributing / license | [SECURITY.md](SECURITY.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [LICENSE](LICENSE) |
+| Issues | [github.com/Chris0Jeky/charter-replay/issues](https://github.com/Chris0Jeky/charter-replay/issues) |
+| Toy example | [examples/toy-guard/README.md](examples/toy-guard/README.md) |
 
-`process:executable,arg,policy-file` retains the original bare comma-separated
-contract. Commas are separators; quotes and backslashes have no escaping meaning.
-Use the explicit `process-json:` prefix when a value contains a comma. Its payload
-is exactly one JSON array of strings, not a shell command or a path to a JSON file.
-The first string identifies the executable and the final string identifies the
-policy file. Intermediate strings are passed literally and in order.
-
-Construct the reference with a JSON encoder and pass it as a single CLI argument:
-
-```python
-import json
-import subprocess
-import sys
-
-candidate = "process-json:" + json.dumps(
-    [sys.executable, "-B", "policies/my candidate,final.py"]
-)
-subprocess.run(
-    [
-        sys.executable, "-m", "charter_replay.cli", "replay",
-        "--baseline", "recorded:charter_replay/fixtures/legacy-decisions.jsonl",
-        "--candidate", candidate,
-        "--corpus", "charter_replay/corpora/charter/events.jsonl",
-        "--output", ".local/replay-proof",
-    ],
-    check=True,
-)
-```
-
-Both baseline and candidate accept either process encoding. JSON must contain at
-least two nonempty strings; NUL, CR/LF and unpaired Unicode surrogates are rejected
-before any policy executes. Invalid JSON, nested values, numbers, trailing data
-and empty entries return input-invalid exit 2 with a bounded diagnostic. JSON
-whitespace and ordinary JSON string escapes are supported. There is no fallback
-to comma parsing, shell expansion, CSV parsing or filename-based autodetection.
-
-This is an additive CLI encoding, not a process identity version change. Equivalent
-decoded argv values use the same existing identity, executable/policy validation,
-snapshot isolation and timeout. The Markdown report's structured reproduction
-retains the chosen input encoding, so rerunning it preserves comma-bearing values.
-The policy still runs as an unsandboxed program; JSON encoding grants no additional
-isolation or authority.
-
-## Baseline truth
-
-Despite its compatibility filename, `fixtures/legacy-decisions.jsonl` is a synthetic
-freeze-candidate expectation for the curated charter. It was not captured by executing the private
-legacy dispatcher. The owner-approved `floor-v1-final` tag now exists at
-`02bd14cfe094f9b6af85b966de481ff3f45264cf`, but that immutable implementation tag does not turn
-this synthetic recording into captured dispatcher output. Its sidecar policy ID and every decision
-reason preserve that distinction.
-
-The reference candidate is equally narrow: it maps the 50 reviewed fixture event IDs to expected
-effects. It does not parse command text or reproduce the frozen dispatcher.
-
-## Reproducibility and limits
-
-Corpus and recorded-source manifests bind exact bytes with SHA-256. A run ID binds the runner
-version, both policy-source identities, the corpus-manifest digest, and gate configuration. Process
-startup captures every corpus file and both recorded-source files once, validates those captured
-bytes, and retains the same immutable bytes for parsing and evaluation. Replacing a validated path
-later therefore cannot change a result under the earlier manifest or policy identity. Process
-identity v9 includes the executable's lexical invocation basename, the resolved executable target's
-bytes and four-octal-digit permission mode, entry-policy bytes, the relative names, exact
-regular-file bytes, and permission modes for the policy-parent root and entries, configured
-timeout, fixed environment, fixed `0700` runner-owned directory modes on POSIX, and policy-parent
-working-directory contract. It also binds an opaque SHA-256 digest of the selected resolved
-snapshot parent without writing that absolute path to the run manifest. Process identities are
-therefore conservatively host/path-sensitive when policy-visible temporary roots differ. The digest
-is machine-derived data and can confirm an offline guess of a common temporary path; it avoids
-plaintext disclosure but is not a secrecy boundary. Process-source run IDs are host-context
-evidence, not portable cross-host correlation keys. V9 also
-binds the snapshot-mtime contract: every copied file and directory has modification time
-`946684800000000000` ns (2000-01-01T00:00:00Z). An
-executable alias and its target have distinct identities when their invocation names differ, while
-the snapshot still binds the resolved target bytes. Immediately before each process runs, the runner
-copies the bound executable and complete policy-parent tree into a private temporary snapshot,
-verifies that the snapshot's entry-policy bytes, executable bytes and permission mode, and complete
-tree digest exactly match the identity, normalizes every snapshot mtime, verifies that fixed mtime
-before and after execution, and launches the policy only from the snapshot paths. Changing only a
-source mtime therefore preserves the identity and run ID and cannot change the copied mtime observed
-by the policy. The resolved parent is captured once while the source is loaded and reused during
-evaluation; the private root suffix is derived from the process identity. Consequently,
-`cwd`, `argv[0]`, and policy-file paths exposed by a successful run remain stable for that identity,
-and changing the selected parent changes the identity and run ID. A missing parent or pre-existing
-identity path fails closed; a pre-existing path is neither reused nor removed. A candidate snapshot
-equal to or below the resolved policy tree fails closed before creation or copy. V0 does not
-serialize concurrent evaluations of the same identity, so overlapping evaluations can make one
-source fail closed and should be run sequentially.
-Permission differences preserved by the copy therefore
-produce distinct identities and run IDs even when names, bytes, and execute bits are unchanged.
-Changing or removing an original path after snapshot preparation therefore cannot change what the
-process opens. A mismatch or unavailable input produces `indeterminate`; a cleanup failure is also
-a source failure. Cleanup may restore write permission only inside the runner-created private
-snapshot so copied read-only inputs can be removed; it never changes the original policy tree.
-Corpus and run manifests require at least one event, so an empty or truncated corpus cannot
-produce a vacuous pass.
-
-The snapshot is reproducibility containment, not an operating-system sandbox. A hostile process
-running as the same OS user may still be able to discover or rewrite temporary storage, and policy
-behavior after process start remains outside the snapshot guarantee. Pre/post verification catches
-ordinary snapshot drift but is not an atomic defence against a same-user mutate-and-restore attack.
-A generic executable must be
-relocatable enough to run from the snapshot; adjacent loader libraries are copied as unbound
-runtime dependencies, and Python uses its host base prefix for its unbound standard library. If the
-captured executable cannot start, replay fails closed instead of falling back to the original path.
-
-Recognized Windows CPython virtualenv launchers are rejected during source loading
-with input-invalid exit `2`, before policy invocation or report publication. The runner
-recognizes its current virtualenv controller launcher and exact-byte matches to known
-launcher templates in its Python installation, including copied aliases. It does not
-classify arbitrary executables by their basename or a nearby `pyvenv.cfg`. Launchers
-from other installations that do not match those known bytes remain subject to the
-generic relocation requirement and may fail closed during invocation. The launcher
-needs `pyvenv.cfg` to locate its base interpreter; copying that configuration alone
-would execute an interpreter outside the bound snapshot. Run the controller with
-native Python (for example, `py -3.14 -m charter_replay.cli replay ...` on Windows)
-and select that native interpreter as the process executable. Accepted process
-identities remain v9; no interpreter substitution or virtualenv configuration copying
-occurs.
-
-External installed dependencies, files outside the policy tree, network responses, and other host
-metadata remain outside the identity; access/change/birth times and filesystem object identities
-are not normalized. Callers that depend on them must isolate and record that environment.
-
-Policy standard streams are backed by temporary files, so waiting for inherited pipe EOF cannot
-extend the configured timeout. On Windows an event-gated supervisor enters a
-kill-on-close Job Object before it can launch the policy and contains the policy process family. On
-POSIX the policy root starts in a new session and root process group; timeout and normal root
-completion send `SIGKILL` only to that root process group with bounded cleanup, so descendants that
-remain in it cannot outlive replay. A descendant that calls `setpgid`/`setpgrp` to create another
-group in the same session, or `setsid` to create another session, leaves POSIX v0 containment and
-may continue from a deleted snapshot. Process output has no byte quota. An escaped POSIX descendant
-can retain its temporary-file stream handles and continue consuming disk after timeout and after
-replay returns; replay no longer observes or caps that output. Callers requiring stronger
-containment must isolate the process externally.
-
-The three report artifacts are fully staged before publication. Replacing an existing report set
-uses rollback: a publication error restores the prior complete set instead of leaving a new
-manifest beside old results. This is an in-process failure guarantee, not an operating-system crash
-transaction; callers still own durable artifact storage.
-
-Reports describe changes between decisions. They never claim that an original command was safe,
-unsafe, executed, or reproduced. The checked-in reference and test lane performs no network access
-and never imports or runs the legacy dispatcher. A caller-supplied `process:` policy is an
-unsandboxed program and may use the network or filesystem unless the caller isolates it.
+Apache License 2.0. Only the latest 0.x release receives fixes. Report vulnerabilities via GitHub private vulnerability reporting, not a public issue.
