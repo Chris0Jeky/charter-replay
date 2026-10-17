@@ -24,7 +24,8 @@ class PublicationError(OSError):
 
 
 def _require_private_mode(mode: int, expected: int) -> None:
-    if os.name == "posix" and stat.S_IMODE(mode) != expected:
+    # Only group/other bits matter: setgid parents and stricter umasks stay private.
+    if os.name == "posix" and stat.S_IMODE(mode) & 0o077:
         raise PublicationError("output permissions are not private")
 
 
