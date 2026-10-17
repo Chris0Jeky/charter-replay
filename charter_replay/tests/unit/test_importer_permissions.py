@@ -21,7 +21,7 @@ class ImportPermissionsTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
+        self.root = Path(temporary.name).resolve()  # macOS: /var -> /private/var
         self.output = self.root / "new-parent" / "nested" / "corpus"
 
     def test_private_creation_modes_are_requested_on_every_platform(self):
