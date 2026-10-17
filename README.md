@@ -100,7 +100,13 @@ rewrites and `ask` as indeterminate. `--ask-as` has no effect under `gemini`.
 Codex transcripts. It scrubs credentials, home paths, the local user, host and
 Git identity, email addresses, private hosts and repository names, and it
 refuses to write inside a Git work tree unless Git ignores the target. The
-output is private even after scrubbing: never commit it.
+output is private even after scrubbing: never commit it. Import requires a new
+output directory; existing directories, files and links are never overwritten.
+On POSIX, the corpus directory and files are checked for modes `0700` and `0600`
+before publication. Missing parents are created with mode `0700`. Use a parent
+directory you control. On Windows, POSIX mode bits do not prove privacy: the
+parent ACL must restrict access to the intended account and trusted
+administrators. The importer does not audit Windows ACLs.
 
 ## Kernel reference
 
