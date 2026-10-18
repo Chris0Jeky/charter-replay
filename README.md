@@ -16,7 +16,7 @@ Replay a pinned command corpus through two PreToolUse hooks and fail the gate wh
 
 Coding-agent hooks decide whether a command may proceed. Change one rule, one regex, one `--help` exemption, and a deny becomes an allow. The runtime will not tell you. charter-replay will.
 
-It is a **decision-replay harness**. It feeds recorded command events to a baseline hook and a candidate hook the way Claude Code, Codex, or Gemini CLI would: shell-free argv, PreToolUse JSON on stdin, a fresh workspace as cwd. Then it diffs the effects — allow, deny, indeterminate — by event id, case class and family, and exits 1 when a class you named appears (default: newly allowed or newly indeterminate).
+It is a **decision-replay harness**. It feeds recorded command events to a baseline hook and a candidate hook the way Claude Code, Codex, or Gemini CLI would: shell-free argv, the runtime's hook JSON on stdin (`PreToolUse` for Claude Code and Codex, `BeforeTool` for Gemini CLI), a fresh workspace as cwd. Then it diffs the effects — allow, deny, indeterminate — by event id, case class and family, and exits 1 when a class you named appears (default: newly allowed or newly indeterminate).
 
 It is not a live interceptor, a policy language, a sandbox, a safety proof, or a benchmark. The runner never executes corpus command strings. It executes the hook you pointed at, with your privileges. Reports describe decision changes. They never claim that an original command was safe, unsafe, executed, or reproduced.
 
@@ -97,11 +97,14 @@ This is the command [CI](.github/workflows/ci.yml) installs and runs. It exits *
 
 > This re-evaluates recorded command events and decisions. It does not reproduce the original agent, environment, shell effects, or operating-system boundary.
 
-Each hook runs once per command, as the runtime runs it: shell-free argv, the PreToolUse JSON on stdin, `cwd` inside a fresh workspace (optionally copied from `--workspace`), and `CLAUDE_PROJECT_DIR` set to that workspace (not under `--runtime codex`). A hook command is a JSON array or POSIX-quoted words. On Windows, `py -3` works as the interpreter and forward slashes avoid quoting trouble.
+Each hook runs once per command, as the runtime runs it: shell-free argv, the runtime's hook JSON on stdin (`BeforeTool` under `--runtime gemini`), `cwd` inside a fresh workspace (optionally copied from `--workspace`), and `CLAUDE_PROJECT_DIR` set to that workspace (not under `--runtime codex`). A hook command is a JSON array or POSIX-quoted words. On Windows, `py -3` works as the interpreter and forward slashes avoid quoting trouble.
 
 Open `reports/demo/report/report.html` in a browser for the offline review view. For a pull request, use the Action:
 
 ```yaml
+- uses: actions/checkout@<sha>   # the hook paths below live in your repository
+  with:
+    persist-credentials: false
 - uses: Chris0Jeky/charter-replay@<sha>
   with:
     baseline: python hooks/guard_main.py
