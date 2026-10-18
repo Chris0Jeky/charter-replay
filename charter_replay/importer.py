@@ -28,6 +28,7 @@ from charter_replay.corpus import (
     COMMAND_EVENT_VERSION,
 )
 from charter_replay.digests import sha256_bytes
+from charter_replay.publication import new_destination, publish_new_directory
 
 CORPUS_ID = "private-local"
 FALLBACK_TIMESTAMP = "2000-01-01T00:00:00Z"
@@ -412,10 +413,17 @@ def _jsonl_bytes(records: list[dict[str, Any]]) -> bytes:
 def write_corpus(
     output: Path, events: list[dict[str, Any]], cases: list[dict[str, Any]]
 ) -> None:
-    output.mkdir(parents=True, exist_ok=True)
+    missing = []
+    parent = output.absolute().parent
+    while not parent.exists():
+        missing.append(parent)
+        parent = parent.parent
+    for parent in reversed(missing):
+        parent.mkdir(mode=0o700)
+    output = new_destination(output)
+    if not output_is_private(output):
+        raise ValueError("output must be outside a Git work tree or ignored by Git")
     files = {"events.jsonl": _jsonl_bytes(events), "cases.jsonl": _jsonl_bytes(cases)}
-    for name, content in files.items():
-        (output / name).write_bytes(content)
     manifest = {
         "schema_version": "corpus-manifest.v1",
         "corpus_id": CORPUS_ID,
@@ -425,9 +433,10 @@ def write_corpus(
             for name, content in files.items()
         ],
     }
-    (output / "corpus-manifest.json").write_text(
-        json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n"
+    files["corpus-manifest.json"] = (json.dumps(manifest, indent=2) + "\n").encode(
+        "utf-8"
     )
+    publish_new_directory(output, files, marker="corpus-manifest.json")
 
 
 def _root(value: str | None, *default: str) -> Path | None:

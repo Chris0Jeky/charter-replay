@@ -187,7 +187,18 @@ The runner never executes these command strings. Classification comes only from 
 
 v1 case metadata cannot prove independent labeling. Metrics say "agreement with supplied v1 labels", not "safety accuracy": [docs/METRICS.md](docs/METRICS.md).
 
-`charter-replay import` scrubs credentials, home paths, the local user, host and Git identity, email addresses, private hosts and repository names, and refuses to write inside a Git work tree unless Git ignores the target. Treat the output as private. Open follow-ups on that path: [#57](https://github.com/Chris0Jeky/charter-replay/issues/57), [#58](https://github.com/Chris0Jeky/charter-replay/issues/58).
+`charter-replay import` builds a private corpus from local Claude Code and
+Codex transcripts. It scrubs credentials, home paths, the local user, host and
+Git identity, email addresses, private hosts and repository names, and it
+refuses to write inside a Git work tree unless Git ignores the target. The
+output is private even after scrubbing: never commit it. Import requires a new
+output directory; existing directories, files and links are never overwritten.
+On POSIX, the corpus directory and files are created with modes `0700` and
+`0600` (or stricter under the umask), and group/other access is rejected before
+publication. Missing parents are created with mode `0700`. Use a parent
+directory you control. On Windows, POSIX mode bits do not prove privacy: the
+parent ACL must restrict access to the intended account and trusted
+administrators. The importer does not audit Windows ACLs.
 
 ## Kernel process sources
 
@@ -229,7 +240,7 @@ Shipped on `main` (roadmap ids, evidence is the linked PR): runtime adapter regi
 
 Still planned, not shipped: split `policy_sources.py` (R04-2, deferred [#43](https://github.com/Chris0Jeky/charter-replay/issues/43)); independent case-evidence and a human-reviewed seed benchmark (R05-1, R05-2); `action-event.v1` for file / network / MCP (R06); digest-verified pack install and private aggregate trends (R07); reviewed Windows transforms (R08-1); remaining output/disk budget work (R08-2). Delivery order: [docs/ROADMAP.md](docs/ROADMAP.md).
 
-Open defects worth knowing about: import can follow ignored output symlinks ([#57](https://github.com/Chris0Jeky/charter-replay/issues/57)); import corpora are world-readable on POSIX ([#58](https://github.com/Chris0Jeky/charter-replay/issues/58)); intermittent macOS `start-failed` under synthetic overflow ([#49](https://github.com/Chris0Jeky/charter-replay/issues/49)); Windows descendant-cleanup elapsed assertion on a loaded host ([#52](https://github.com/Chris0Jeky/charter-replay/issues/52)).
+Tracked platform issues: intermittent macOS `start-failed` under synthetic overflow ([#49](https://github.com/Chris0Jeky/charter-replay/issues/49)); Windows descendant-cleanup elapsed assertion on a loaded host ([#52](https://github.com/Chris0Jeky/charter-replay/issues/52)).
 
 ## Contributing
 

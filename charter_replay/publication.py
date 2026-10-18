@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
 
 MAX_PUBLICATION_BYTES = 128 * 1024 * 1024
@@ -20,6 +21,12 @@ class PublicationError(OSError):
     It never carries a path, file name or hook output. Callers print `str(exc)`
     and exit 3, where a plain OSError is reduced to its class name.
     """
+
+
+def _require_private_mode(mode: int, expected: int) -> None:
+    # Only group/other bits matter: setgid parents and stricter umasks stay private.
+    if os.name == "posix" and stat.S_IMODE(mode) & 0o077:
+        raise PublicationError("output permissions are not private")
 
 
 def new_destination(output: str | Path) -> Path:
@@ -65,10 +72,12 @@ def publish_new_directory(
         prefix=".charter-publish-", dir=target.parent
     ) as raw:
         staging = Path(raw)
+        _require_private_mode(staging.stat().st_mode, 0o700)
         for name in names:
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
             descriptor = os.open(staging / name, flags, 0o600)
             with os.fdopen(descriptor, "wb") as stream:
+                _require_private_mode(os.fstat(descriptor).st_mode, 0o600)
                 stream.write(files[name])
         try:
             target.mkdir(mode=0o700)
@@ -78,6 +87,7 @@ def publish_new_directory(
             ) from exc
         owned = []
         try:
+            _require_private_mode(target.stat().st_mode, 0o700)
             for name in names:
                 os.link(staging / name, target / name)
                 owned.append(name)
