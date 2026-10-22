@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `import` scrubbing follows credentials across lines: a value on the line after
+  its key or flag, multi-line quoted values (up to 16 lines), `mysql` backslash
+  continuations, quote-concatenated values with spaces, and whole PGP private
+  key blocks. (#65)
+
 - `import` scrubbing closes the remaining #63 gaps: UNC admin-share and WSL
   home paths (server and user), double percent-encoding, unsigned JWTs,
   `mysql -p…` and PowerShell `-AsPlainText` values, underscore hosts, private URLs
