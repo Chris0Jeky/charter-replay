@@ -198,6 +198,18 @@ class ScrubberTests(unittest.TestCase):
             """curl --data '{"api_key":<redacted>,"b":1}'""",
         )
 
+    def test_attached_json_fields_are_scrubbed_individually(self) -> None:
+        for command in (
+            """curl --data '{"api_key":"fictional-one","token":"fictional-two","b":1}' """,
+            r"""curl --data "{\"api_key\":\"fictional-one\",\"token\":\"fictional-two\",\"b\":1}" """,
+        ):
+            with self.subTest(command=command):
+                clean = self.scrubber.scrub(command)
+                self.assertNotIn("fictional-one", clean)
+                self.assertNotIn("fictional-two", clean)
+                self.assertEqual(clean.count("<redacted>"), 2)
+                self.assertIn("1}", clean)
+
     def test_quoted_private_urls_lose_their_whole_query(self) -> None:
         text = self.scrubber.scrub(
             "curl 'https://build.corp/secrets?x=1&customer=AcmeSecret' && ls"
@@ -256,6 +268,110 @@ class ScrubberTests(unittest.TestCase):
             with self.subTest(value=value):
                 clean = self.scrubber.scrub("API_TOKEN=" + value)
                 self.assertNotIn(tail, clean)
+
+    def test_quoted_credentials_consume_attached_unquoted_tails(self) -> None:
+        tail = "Synthetic" + "Tail42"
+        for command in (
+            f'API_TOKEN="head"{tail}',
+            "--password 'ab'cdef",
+            f'--password "head"{tail},more; echo after',
+            f'API_TOKEN="head"{tail}&echo after',
+        ):
+            with self.subTest(command=command):
+                clean = self.scrubber.scrub(command)
+                for secret in ("head", tail, "cdef", "more"):
+                    self.assertNotIn(secret, clean)
+                self.assertIn("<redacted>", clean)
+                if "echo after" in command:
+                    self.assertIn("echo after", clean)
+
+    def test_rescans_choose_the_most_redacted_variant(self) -> None:
+        body = "Ab12Cd34" + "Ef56Gh78Ij90"
+        for prefix in ("gh'p_'", "gh'p%5F'", "ghp%2'5'5F"):
+            with self.subTest(prefix=prefix):
+                clean = self.scrubber.scrub(
+                    "echo " + prefix + body + "%2Fhome%2Fzoe%2Fnotes"
+                )
+                self.assertEqual(clean, "echo <token>/home/<user>/notes")
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_rescans_keep_the_earlier_variant_on_equal_redaction(self) -> None:
+        self.assertEqual(
+            self.scrubber.scrub("echo %2Fhome%2Fzoe%2Fnotes%2520after"),
+            "echo /home/<user>/notes%20after",
+        )
+
+    def test_short_lines_and_near_limit_lines_scrub_in_bounded_time(self) -> None:
+        # Each case is isolated so quadratic regressions cannot hang the suite.
+        samples = [
+            "mysql" + ending
+            for ending in (
+                "\n",
+                "\r",
+                "\r\n",
+                "\v",
+                "\f",
+                "\x1c",
+                "\x1d",
+                "\x1e",
+                "\x85",
+                "\u2028",
+                "\u2029",
+            )
+        ]
+        cases = [(sample, 30000) for sample in samples]
+        cases.append(("-----BEGIN PRIVATE KEY-----\n", 30000))
+        # These remain below the guard and must actually exercise the regexes.
+        cases.extend(
+            (sample[:4095], 1)
+            for sample in (
+                "mysql " * 683,
+                "token" * 819,
+                "a." * 2048,
+                '"' * 4095,
+                "-----BEGIN PRIVATE KEY-----" + "x" * 4095,
+            )
+        )
+        for sample, repeats in cases:
+            with self.subTest(sample=repr(sample[:28]), repeats=repeats):
+                program = (
+                    "from charter_replay.importer import Scrubber; "
+                    "s = Scrubber(); "
+                    f"s.scrub({sample!r} * {repeats})"
+                )
+                started = time.monotonic()
+                result = subprocess.run(
+                    [sys.executable, "-c", program],
+                    capture_output=True,
+                    timeout=10,
+                    check=True,
+                )
+                self.assertEqual(result.stdout, b"")
+                self.assertLess(time.monotonic() - started, 10)
+
+    def test_multiline_private_keys_are_scrubbed_before_line_processing(self) -> None:
+        for label in ("", "RSA ", "EC ", "ENCRYPTED "):
+            with self.subTest(label=label):
+                text = (
+                    "echo before\n"
+                    f"-----BEGIN {label}PRIVATE KEY-----\n"
+                    "fictional key material\n" + "x" * 5000 + "\n"
+                    f"-----END {label}PRIVATE KEY-----\n"
+                    "echo after\n"
+                )
+                self.assertEqual(
+                    self.scrubber.scrub(text),
+                    "echo before\n<private-key>\necho after\n",
+                )
+
+    def test_percent_encoded_multiline_private_keys_are_scrubbed(self) -> None:
+        text = (
+            "-----BEGIN PRIVATE KEY-----\n"
+            "fictional key material\n"
+            "-----END PRIVATE KEY-----"
+        )
+        encoded = text.replace(" ", "%20").replace("\n", "%0A")
+        self.assertEqual(self.scrubber.scrub("echo " + encoded), "echo <private-key>")
 
     def test_long_dotted_lines_scrub_in_bounded_time(self) -> None:
         # Isolate the timing check so an old quadratic regex cannot hang the suite.

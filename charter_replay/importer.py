@@ -41,10 +41,27 @@ _FAMILY_WORD = re.compile(r"[^a-z0-9]+")
 # near-matches and leaking a credential cut in half by chunking.
 _MAX_SCRUB_LINE = 4096
 _LINE_ENDINGS = "\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029"
+_LINE_BREAKS = r"\r\n\v\f\x1c-\x1e\x85\u2028\u2029"
+# Do not let a missing END rescan through subsequent BEGIN markers. Both the
+# labels and body are bounded; this is the only whole-text scrubbing regex.
+_PRIVATE_KEY = re.compile(
+    r"-----BEGIN [A-Z ]{0,64}PRIVATE KEY-----"
+    r"(?:(?!-----BEGIN )[\s\S]){0,65536}?"
+    r"-----END [A-Z ]{0,64}PRIVATE KEY-----"
+)
+_QUOTED_CREDENTIAL = (
+    rf"\\\"[^\\\"{_LINE_BREAKS}]*\\\"|"
+    rf'"[^"{_LINE_BREAKS}]*"|'
+    rf"'[^'{_LINE_BREAKS}]*'"
+)
+_CREDENTIAL_NAME = (
+    r"[A-Za-z0-9_]{0,64}(?:token|secret|passw(?:or)?d|api[_-]?key|auth)"
+    r"[A-Za-z0-9_]{0,64}"
+)
 # Recognise our own marker before a bare value: a second pass must not swallow
 # JSON punctuation and neighbouring fields after an already-redacted value.
 _CREDENTIAL_VALUE = (
-    r"""(<redacted>(?=[,}\]])|\\\"[^\\\"]*\\\"|"[^"]*"|'[^']*'|[^\s;&|]+)"""
+    r"(<redacted>(?=[,}\]])|(?:" + _QUOTED_CREDENTIAL + r")[^\s;&|]*|[^\s;&|]+)"
 )
 
 
@@ -62,7 +79,10 @@ def _redact_credential(match: re.Match[str]) -> str:
 # bare usernames.
 _TOKEN_PATTERNS = (
     (
-        re.compile(r"(?i)(\bmysql(?:\.exe)?\b[^;\r\n|&]*?\s-p)" + _CREDENTIAL_VALUE),
+        re.compile(
+            rf"(?i)(\bmysql(?:\.exe)?\b[^;{_LINE_BREAKS}|&]{{0,256}}?\s-p)"
+            + _CREDENTIAL_VALUE
+        ),
         _redact_credential,
     ),
     (
@@ -104,18 +124,22 @@ _TOKEN_PATTERNS = (
         r"\1 <token>",
     ),
     (
+        # Scrub JSON strings individually before shell matching can consume
+        # attached punctuation. The marker then preserves neighbouring fields.
         re.compile(
-            r"(?i)\b([A-Za-z0-9_]{0,64}(?:token|secret|passw(?:or)?d|api[_-]?key|auth)"
-            r"[A-Za-z0-9_]{0,64}\\?[\"']?\s*[=:]\s*)" + _CREDENTIAL_VALUE
+            r"(?i)(\b"
+            + _CREDENTIAL_NAME
+            + r"""\\?["']\s*:\s*)("""
+            + _QUOTED_CREDENTIAL
+            + r")(?=[,}\]])"
         ),
         _redact_credential,
     ),
     (
         re.compile(
-            r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
-            re.S,
+            r"(?i)\b(" + _CREDENTIAL_NAME + r"\\?[\"']?\s*[=:]\s*)" + _CREDENTIAL_VALUE
         ),
-        "<private-key>",
+        _redact_credential,
     ),
     (re.compile(r"\b[0-9a-fA-F]{32,}\b"), "<hex>"),
     (re.compile(r"[A-Za-z0-9+/]{48,}={0,2}"), "<blob>"),
@@ -138,7 +162,9 @@ _SCP_REMOTE = re.compile(
     r"\b[\w.-]+@([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*):(?!//)([^\s\"';&|<>()`]+)"
 )
 # A quoted URL keeps `&`, `;` and `|` in its query; only the quote ends it.
-_QUOTED_URL = re.compile(r"(?i)(['\"])([a-z][a-z0-9+.-]*://(?:(?!\1)[^\n])*)\1")
+_QUOTED_URL = re.compile(
+    rf"(?i)(['\"])([a-z][a-z0-9+.-]*://(?:(?!\1)[^{_LINE_BREAKS}])*)\1"
+)
 _URL_HOST_QUOTED = re.compile(
     r"(?i)\A([a-z][a-z0-9+.-]*://)([A-Za-z0-9_.-]+)(:[0-9]+)?([/?#]\S*)?"
 )
@@ -170,9 +196,12 @@ _UNC_HOME = re.compile(
 )
 _QUOTED_HOME_PATHS = (
     re.compile(
-        r"(?i)([\"'][^\"'\r\n]*?[A-Z]:[\\/]+(?:Users|Documents and Settings)[\\/]+)[^\\/\"']+"
+        rf"(?i)([\"'][^\"'{_LINE_BREAKS}]{{0,256}}?[A-Z]:[\\/]+"
+        rf"(?:Users|Documents and Settings)[\\/]+)[^\\/\"'{_LINE_BREAKS}]+"
     ),
-    re.compile(r"([\"'][^\"'\r\n]*?/(?:Users|home)/)[^/\"']+"),
+    re.compile(
+        rf"([\"'][^\"'{_LINE_BREAKS}]{{0,256}}?/(?:Users|home)/)[^/\"'{_LINE_BREAKS}]+"
+    ),
 )
 _HOME_PATHS = (
     re.compile(
@@ -240,17 +269,9 @@ class Scrubber:
         ]
 
     def scrub(self, text: str) -> str:
-        lines = []
-        for line in text.splitlines(keepends=True):
-            body = line.rstrip(_LINE_ENDINGS)
-            lines.append(
-                "<redacted>" + line[len(body) :]
-                if len(body) > _MAX_SCRUB_LINE
-                else line
-            )
-        text = self._scrub("".join(lines))
+        text = self._scrub_lines(text)
         # Decode at most twice, including combined percent/quote splitting.
-        # Adopt a normalisation only if it hides new material.
+        # Keep the most redacted variant; equal scores preserve earlier text.
         words = []
         for word in re.split(r"(\s+)", text):
             variants = [word, self._dequote(word)]
@@ -261,16 +282,27 @@ class Scrubber:
                         break
                     base = urllib.parse.unquote(base)
                     variants.append(base)
-            for variant in variants[1:] + [self._dequote(v) for v in variants]:
+            best = word
+            best_count = len(_PLACEHOLDER.findall(word))
+            candidates = variants[1:] + [self._dequote(v) for v in variants]
+            for variant in dict.fromkeys(candidates):
                 if variant != word:
-                    cleaned = self._scrub(variant)
-                    if len(_PLACEHOLDER.findall(cleaned)) > len(
-                        _PLACEHOLDER.findall(word)
-                    ):
-                        word = cleaned
-                        break
-            words.append(word)
+                    cleaned = self._scrub_lines(variant)
+                    count = len(_PLACEHOLDER.findall(cleaned))
+                    if count > best_count:
+                        best, best_count = cleaned, count
+            words.append(best)
         return "".join(words)
+
+    def _scrub_lines(self, text: str) -> str:
+        lines = []
+        for line in _PRIVATE_KEY.sub("<private-key>", text).splitlines(keepends=True):
+            body = line.rstrip(_LINE_ENDINGS)
+            lines.append(
+                ("<redacted>" if len(body) > _MAX_SCRUB_LINE else self._scrub(body))
+                + line[len(body) :]
+            )
+        return "".join(lines)
 
     @staticmethod
     def _dequote(word: str) -> str:
