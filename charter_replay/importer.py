@@ -65,7 +65,7 @@ _CREDENTIAL_NAME = (
 _CREDENTIAL_VALUE = (
     r"(<redacted>(?=[,}\]])|(?:"
     + _QUOTED_CREDENTIAL
-    + r"""|(?!\\")[^\s;&|'"])+(?:["'])?|[^\s;&|]+)"""
+    + r"""|(?!\\")[^\s;&|'"])+(?:["'][^\s;&|]*)?|[^\s;&|]+)"""
 )
 _CLOSED_CREDENTIAL = re.compile(_QUOTED_CREDENTIAL)
 _CREDENTIAL_PREFIX = re.compile(
@@ -347,13 +347,17 @@ class Scrubber:
                 bool(_MYSQL_COMMAND.search(command))
                 or (mysql_continued and not any(c in command for c in ";&|"))
             )
+            # Preserve rule keywords until single-line scrubbing has run.
+            # Cross-line state is always detected from the original command.
+            scrubbed = self._scrub(command)
             start = 0
+            cut_start = None
+            cut_quote = quote
             if quote or (waiting and command.strip()):
                 if not quote:
                     start = len(command) - len(command.lstrip())
-                end, quote = _credential_end(command, start, quote)
-                command = command[:start] + "<redacted>" + command[end:]
-                start += len("<redacted>")
+                cut_start = start
+                start, quote = _credential_end(command, start, quote)
                 waiting = False
                 quote_lines += 1
 
@@ -367,7 +371,10 @@ class Scrubber:
                             command, start, limit.start() if limit else len(command)
                         )
                     )
+                scanned_end = start
                 for match in sorted(prefixes, key=lambda match: match.end()):
+                    if match.start() < scanned_end:
+                        continue
                     value_start = match.end()
                     if value_start == len(command):
                         waiting = True
@@ -381,25 +388,31 @@ class Scrubber:
                             "]",
                         ):
                             continue
-                        _, open_quote = _credential_end(command, value_start)
+                        scanned_end, open_quote = _credential_end(command, value_start)
                         if open_quote:
-                            command = command[:value_start] + "<redacted>"
+                            cut = len(self._scrub(command[:value_start]))
+                            scrubbed = scrubbed[:cut] + "<redacted>"
                             quote, quote_lines = open_quote, 1
                             break
 
+            if cut_start is not None:
+                # Markers contain no whitespace, so scan the scrubbed value
+                # again rather than applying offsets from the original text.
+                end, _ = _credential_end(scrubbed, cut_start, cut_quote)
+                scrubbed = scrubbed[:cut_start] + "<redacted>" + scrubbed[end:]
             if quote_lines >= _MAX_CREDENTIAL_LINES:
                 quote = ""
             if not quote:
                 quote_lines = 0
             if mysql_continued:
-                limit = re.search(r"[;&|]", command)
-                end = limit.start() if limit else len(command)
-                command = (
-                    _MYSQL_CONTINUED_VALUE.sub(_redact_credential, command[:end])
-                    + command[end:]
+                limit = re.search(r"[;&|]", scrubbed)
+                end = limit.start() if limit else len(scrubbed)
+                scrubbed = (
+                    _MYSQL_CONTINUED_VALUE.sub(_redact_credential, scrubbed[:end])
+                    + scrubbed[end:]
                 )
-            body = command + ("\\" if continued else "")
-            lines.append(self._scrub(body) + ending)
+            body = scrubbed + ("\\" if continued else "")
+            lines.append(body + ending)
             mysql_continued = next_mysql
         return "".join(lines)
 

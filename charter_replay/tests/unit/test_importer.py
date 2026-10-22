@@ -11,8 +11,10 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 from charter_replay import cli as kernel
+from charter_replay import importer
 from charter_replay.importer import (
     Scrubber,
     build_private_corpus,
@@ -31,6 +33,38 @@ def _write_jsonl(path: Path, records: list[object]) -> None:
     path.write_text(
         "\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8"
     )
+
+
+def _review_redaction_cases() -> list[tuple[str, str, tuple[str, ...]]]:
+    password = "Hun" + "ter2"
+    apostrophe = "O'" + "Brien2024!"
+    cases = [
+        (
+            f"# connect with the root password:\nmysql -uroot -p{password} db",
+            "# connect with the root password:\nmysql -uroot -p<redacted> db",
+            (password,),
+        ),
+        (
+            f"echo \"password: 'see below\nbash -c 'mysql -uroot -p{password}'",
+            "echo \"password: <redacted> below\nbash -c 'mysql -uroot -p<redacted>'",
+            (password,),
+        ),
+    ]
+    for prefix, suffix in (
+        ("--password=", ""),
+        ("mysql -p", " db"),
+        ("API_TOKEN=", ""),
+        ("ConvertTo-SecureString ", " -AsPlainText"),
+        ("ConvertTo-SecureString -String ", " -AsPlainText -Force"),
+    ):
+        cases.append(
+            (
+                prefix + apostrophe + suffix,
+                prefix + "<redacted>" + suffix,
+                (apostrophe, "Brien2024!"),
+            )
+        )
+    return cases
 
 
 class ScrubberTests(unittest.TestCase):
@@ -305,6 +339,118 @@ class ScrubberTests(unittest.TestCase):
                     clean = self.scrubber.scrub(text)
                     self.assertEqual(clean, expected)
                     self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_cross_line_cuts_preserve_other_credential_rules(self) -> None:
+        for index, (command, _, secrets) in enumerate(_review_redaction_cases()[:2]):
+            with self.subTest(case=index):
+                clean = self.scrubber.scrub(command)
+                for secret in secrets:
+                    self.assertNotIn(secret, clean)
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_internal_unmatched_quotes_do_not_expose_value_suffixes(self) -> None:
+        for index, (command, expected, _) in enumerate(_review_redaction_cases()[2:]):
+            with self.subTest(case=index):
+                self.assertEqual(self.scrubber.scrub(command), expected)
+
+    def test_cross_line_scrub_never_exposes_single_line_redactions(self) -> None:
+        password = "fictional" + "SecurePw42"
+        body = "Ab12Cd34" + "Ef56Gh78Ij90"
+        jwt = "ey" + "JhbGciOiJub25lIn0.eyJzdWIiOiJmaWN0aW9uYWwifQ."
+        # Frozen main-era single-line outputs keep this oracle independent of
+        # both the cross-line state and changes to the value matcher.
+        corpus = _review_redaction_cases() + [
+            (f"mysql -p{password} db", "mysql -p<redacted> db", (password,)),
+            (
+                f'ConvertTo-SecureString "{password}" -AsPlainText',
+                "ConvertTo-SecureString <redacted> -AsPlainText",
+                (password,),
+            ),
+            ("echo " + jwt, "echo <token>", (jwt,)),
+            ("echo gh'p%5F'" + body, "echo <token>", (body,)),
+            ("echo ghp%255F" + body, "echo <token>", (body,)),
+            (
+                'curl -d "{\\"api_key\\":\\"' + password + '\\"}"',
+                'curl -d "{\\"api_key\\":<redacted>}"',
+                (password,),
+            ),
+            (
+                'curl --data \'{"api_key":"x","b":1}\'',
+                'curl --data \'{"api_key":<redacted>,"b":1}\'',
+                ("x",),
+            ),
+            (
+                'git commit -m "rotate token: done"',
+                'git commit -m "rotate token: <redacted>"',
+                ("done",),
+            ),
+            (
+                'curl "https://build.corp/search?q=O\'Reilly&customer=AcmeSecret"',
+                'curl "https://<host>/<path>"',
+                ("build.corp", "Reilly", "AcmeSecret"),
+            ),
+            (
+                "curl https://example.com/?next=https://build_node.corp/team/project",
+                "curl https://example.com/?next=https://<host>/<path>",
+                ("build_node", "team", "project"),
+            ),
+            (
+                "gh pr view 1 --repo ownerlogin/secretproject",
+                "gh pr view 1 --repo <owner>/<repo>",
+                ("ownerlogin", "secretproject"),
+            ),
+            (
+                "git clone git@buildhost:team/secret.git|wc",
+                "git clone <host>:<path>|wc",
+                ("buildhost", "team", "secret.git"),
+            ),
+            (
+                r"cat \\fs01\c$\Users\jdoe\x",
+                r"cat \\<host>\c$\Users\<user>\x",
+                ("jdoe",),
+            ),
+            (
+                r"cat \\wsl.localhost\Ubuntu\home\jdoe\x",
+                r"cat \\<host>\Ubuntu\home\<user>\x",
+                ("jdoe",),
+            ),
+            (
+                r'echo "prefix C:\Users\Jane Roe\notes"',
+                r'echo "prefix C:\Users\<user>\notes"',
+                ("Jane Roe",),
+            ),
+            (
+                "curl https://example.com/?user=zoe%40mail.example",
+                "curl https://example.com/?user=<email>",
+                ("zoe",),
+            ),
+            (
+                "curl https://example.com/?path=%2Fhome%2Fzoe%2Fnotes",
+                "curl https://example.com/?path=/home/<user>/notes",
+                ("zoe",),
+            ),
+            ("token" * 20000, "<redacted>", ("token",)),
+            ("a." * 50000, "<redacted>", ("a.",)),
+        ]
+        for index, (command, expected, secrets) in enumerate(corpus):
+            for prefix in ("", "password:\n", 'API_TOKEN="see below\n'):
+                with self.subTest(case=index, context=bool(prefix)):
+                    baseline = "\n".join(
+                        self.scrubber.scrub(line) for line in command.split("\n")
+                    )
+                    clean = self.scrubber.scrub(prefix + command)
+                    for secret in secrets:
+                        self.assertNotIn(secret, expected)
+                        self.assertNotIn(secret, baseline)
+                        self.assertNotIn(secret, clean)
+
+    def test_credential_prefixes_inside_a_scanned_value_are_not_rescanned(self) -> None:
+        command = '-pass=""' * 512
+        with mock.patch.object(
+            importer, "_credential_end", wraps=importer._credential_end
+        ) as scan:
+            self.scrubber._scrub_lines(command)
+        self.assertEqual(scan.call_count, 1)
 
     def test_multiline_quoted_credentials_are_redacted_through_closing_quote(
         self,
