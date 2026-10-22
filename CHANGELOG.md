@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `import` scrubbing closes gaps found by a privacy audit: short-payload JWTs and
+  `npm_` tokens, credential names with digits (`API_KEY2=`) and quoted JSON/YAML
+  keys, percent-encoded and quote-concatenated values, quoted home folders whose
+  username contains a space, UNC home paths, and query strings of quoted private
+  URLs (where `&` is not a shell boundary).
+
 ## 0.1.1 — 2026-10-02
 
 - The package and runner version advance together to 0.1.1. Run identities include

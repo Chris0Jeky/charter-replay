@@ -193,7 +193,9 @@ v1 case metadata cannot prove independent labeling. Metrics say "agreement with 
 `charter-replay import` builds a private corpus from local Claude Code and
 Codex transcripts. It scrubs credentials, home paths, the local user, host and
 Git identity, email addresses, private hosts and repository names, and it
-refuses to write inside a Git work tree unless Git ignores the target. The
+refuses to write inside a Git work tree unless Git ignores the target. Scrubbing is
+pattern-based defence in depth: it also rescans percent-encoded and
+quote-concatenated words, but it cannot recognise every credential format. The
 output is private even after scrubbing: never commit it. Import requires a new
 output directory; existing directories, files and links are never overwritten.
 On POSIX, the corpus directory and files are created with modes `0700` and
