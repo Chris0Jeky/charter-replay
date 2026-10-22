@@ -63,10 +63,16 @@ _TOKEN_PATTERNS = (
         "<token>",
     ),
     (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 <token>"),
+    # Any other scheme (Token, Bot, ApiKey, Digest) after an Authorization header.
+    (
+        re.compile(r"(?i)\b(authorization\s*:\s*[A-Za-z]+)\s+[A-Za-z0-9._~+/=-]{8,}"),
+        r"\1 <token>",
+    ),
     (
         re.compile(
-            r"(?i)\b([A-Za-z0-9_]*(?:token|secret|passw(?:or)?d|api[_-]?key|auth)"
-            r"[A-Za-z0-9_]*[\"']?\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|[^\s;&|]+)"
+            r"(?i)\b([A-Za-z0-9_]{0,64}(?:token|secret|passw(?:or)?d|api[_-]?key|auth)"
+            r"[A-Za-z0-9_]{0,64}\\?[\"']?\s*[=:]\s*)"
+            r"(\\\"[^\\\"]*\\\"|\"[^\"]*\"|'[^']*'|[^\s;&|]+)"
         ),
         r"\1<redacted>",
     ),

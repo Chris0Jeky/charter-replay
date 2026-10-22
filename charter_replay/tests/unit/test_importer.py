@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 from charter_replay import cli as kernel
@@ -157,6 +158,23 @@ class ScrubberTests(unittest.TestCase):
                 self.assertNotIn("Roe", scrubbed)
                 self.assertNotIn("zoe", scrubbed)
                 self.assertIn("notes", scrubbed)
+
+    def test_escaped_json_keys_and_other_auth_schemes_are_redacted(self) -> None:
+        value = "s3cr3t" + "Value9"
+        hexish = "9f8e7d6c" + "5b4a3a2b1c0d"
+        for text, secret in (
+            ('curl -d "{\\"api_key\\":\\"' + value + '\\"}"', value),
+            ('curl -H "Authorization: Token ' + hexish + '"', hexish),
+            ('curl -H "Authorization: Bot ' + hexish + '"', hexish),
+        ):
+            with self.subTest(text=text[:24]):
+                self.assertNotIn(secret, self.scrubber.scrub(text))
+
+    def test_long_keyword_runs_scrub_in_bounded_time(self) -> None:
+        # Unbounded name runs made this ~100 KB line take over a minute.
+        started = time.monotonic()
+        self.scrubber.scrub("token" * 20000)
+        self.assertLess(time.monotonic() - started, 10)
 
     def test_rescans_keep_already_redacted_words_intact(self) -> None:
         self.assertEqual(
