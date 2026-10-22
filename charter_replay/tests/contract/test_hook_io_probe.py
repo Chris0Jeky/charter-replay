@@ -28,16 +28,35 @@ class HookIoProbeTests(unittest.TestCase):
         self.assertNotIn(b"Traceback", data)
         self.assertEqual(json.loads(data), document)
 
+    def safe_diagnostic(self, document):
+        # Admit the probe's fixed vocabulary before using any values in a failure.
+        self.probe.render(document)
+        return json.dumps(
+            dict(
+                outcomes=document["outcomes"],
+                records=[
+                    {
+                        key: row[key]
+                        for key in ("phase", "error_class", "errno", "outcome")
+                    }
+                    for row in document["records"]
+                ],
+            ),
+            sort_keys=True,
+        )
+
     def test_ordinary_probe_observes_two_real_overflows(self):
         document = self.probe.run_probe(attempts=1)
         self.assert_safe(document)
-        self.assertEqual(document["status"], "complete")
-        self.assertEqual(document["completed_invocations"], 2)
-        self.assertEqual(document["outcomes"]["output-limit"], 2)
-        self.assertEqual(document["outcomes"]["start-failed"], 0)
+        diagnostic = self.safe_diagnostic(document)
+        self.assertEqual(document["status"], "complete", diagnostic)
+        self.assertEqual(document["completed_invocations"], 2, diagnostic)
+        self.assertEqual(document["outcomes"]["output-limit"], 2, diagnostic)
+        self.assertEqual(document["outcomes"]["start-failed"], 0, diagnostic)
         self.assertEqual(
             [r["outcome"] for r in document["records"] if r["outcome"]],
             ["output-limit", "output-limit"],
+            diagnostic,
         )
         for phase in (
             "stream-create",
@@ -56,9 +75,15 @@ class HookIoProbeTests(unittest.TestCase):
     def test_real_overflow_then_injected_emfile_has_exact_safe_evidence(self):
         document = self.probe.run_probe(attempts=1, inject_emfile=True)
         self.assert_safe(document)
-        self.assertEqual(document["status"], "complete")
-        self.assertEqual(document["outcomes"]["output-limit"], 1)
-        self.assertEqual(document["outcomes"]["start-failed"], 1)
+        diagnostic = self.safe_diagnostic(document)
+        self.assertEqual(document["status"], "complete", diagnostic)
+        self.assertEqual(document["outcomes"]["output-limit"], 1, diagnostic)
+        self.assertEqual(document["outcomes"]["start-failed"], 1, diagnostic)
+        self.assertEqual(
+            [r["outcome"] for r in document["records"] if r["outcome"]],
+            ["output-limit", "start-failed"],
+            diagnostic,
+        )
         self.assertEqual(
             [r for r in document["records"] if r["phase"] == "stream-create"],
             [
@@ -71,6 +96,7 @@ class HookIoProbeTests(unittest.TestCase):
                     outcome=None,
                 )
             ],
+            diagnostic,
         )
 
     def test_invalid_attempt_budget_is_refused_before_any_launch(self):
@@ -78,6 +104,25 @@ class HookIoProbeTests(unittest.TestCase):
             with self.subTest(attempts=attempts), forbid_process_launch():
                 with self.assertRaisesRegex(ValueError, "attempts"):
                     self.probe.run_probe(attempts=attempts)
+
+    def test_unexpected_first_outcome_prints_only_safe_failure_evidence(self):
+        recorder = self.probe.Recorder()
+        for ordinal in (1, 2):
+            recorder.ordinal = ordinal
+            recorder.error(
+                "stream-create",
+                OSError(errno.EMFILE, "synthetic-private-sentinel /private/path"),
+            )
+            recorder.outcome("start-failed")
+        document = recorder.document(1, "complete", injected=True)
+        with mock.patch.object(self.probe, "run_probe", return_value=document):
+            with self.assertRaises(AssertionError) as caught:
+                self.test_real_overflow_then_injected_emfile_has_exact_safe_evidence()
+        diagnostic = str(caught.exception)
+        for value in ("start-failed", "stream-create", "OSError", str(errno.EMFILE)):
+            self.assertIn(value, diagnostic)
+        self.assertNotIn("synthetic-private-sentinel", diagnostic)
+        self.assertNotIn("/private/path", diagnostic)
 
     def test_dynamic_exception_names_and_values_cannot_escape(self):
         private_error = type("synthetic-private-sentinel", (OSError,), {})
