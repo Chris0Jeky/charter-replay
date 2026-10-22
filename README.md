@@ -195,8 +195,11 @@ Codex transcripts. It scrubs credentials, home paths, the local user, host and
 Git identity, email addresses, private hosts and repository names, and it
 refuses to write inside a Git work tree unless Git ignores the target. Scrubbing is
 pattern-based defence in depth: it also rescans percent-encoded and
-quote-concatenated words, but it cannot recognise every credential format. The
-output is private even after scrubbing: never commit it. Import requires a new
+quote-concatenated words (up to two percent-decoding layers), but it cannot
+recognise every credential format or parse arbitrary shell syntax. Lines longer
+than 4,096 characters are replaced in full with `<redacted>` before pattern
+matching to bound regex work; their line endings and neighbouring lines survive.
+The output is private even after scrubbing: never commit it. Import requires a new
 output directory; existing directories, files and links are never overwritten.
 On POSIX, the corpus directory and files are created with modes `0700` and
 `0600` (or stricter under the umask), and group/other access is rejected before

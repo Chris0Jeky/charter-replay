@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -197,6 +198,18 @@ class ScrubberTests(unittest.TestCase):
             """curl --data '{"api_key":<redacted>,"b":1}'""",
         )
 
+    def test_attached_json_fields_are_scrubbed_individually(self) -> None:
+        for command in (
+            """curl --data '{"api_key":"fictional-one","token":"fictional-two","b":1}' """,
+            r"""curl --data "{\"api_key\":\"fictional-one\",\"token\":\"fictional-two\",\"b\":1}" """,
+        ):
+            with self.subTest(command=command):
+                clean = self.scrubber.scrub(command)
+                self.assertNotIn("fictional-one", clean)
+                self.assertNotIn("fictional-two", clean)
+                self.assertEqual(clean.count("<redacted>"), 2)
+                self.assertIn("1}", clean)
+
     def test_quoted_private_urls_lose_their_whole_query(self) -> None:
         text = self.scrubber.scrub(
             "curl 'https://build.corp/secrets?x=1&customer=AcmeSecret' && ls"
@@ -204,6 +217,315 @@ class ScrubberTests(unittest.TestCase):
         self.assertNotIn("AcmeSecret", text)
         self.assertNotIn("build.corp", text)
         self.assertIn("' && ls", text)
+
+    def test_unc_admin_shares_and_wsl_homes_are_scrubbed(self) -> None:
+        for path in (
+            r"\\fs01\c$\Users\jdoe\x",
+            r"\\fs01\C$\Users\jdoe\x",
+            "//fs01/c$/Users/jdoe/x",
+            r"\\wsl.localhost\Ubuntu\home\jdoe\x",
+            r"\\wsl$\Ubuntu\home\jdoe\x",
+        ):
+            with self.subTest(path=path):
+                clean = self.scrubber.scrub("cat " + path)
+                self.assertIn("<host>", clean)
+                self.assertIn("<user>", clean)
+                for private in ("fs01", "wsl.localhost", "wsl$", "jdoe"):
+                    self.assertNotIn(private, clean)
+                self.assertTrue(clean.endswith("/x") or clean.endswith("\\x"))
+
+    def test_rescans_preserve_surrounding_quotes(self) -> None:
+        body = "abcdefgh" + "1234"
+        split = "gh'p_'" + body
+        for command, expected in (
+            (f'echo "{split} done"', 'echo "<token> done"'),
+            (f'echo "{split}"', 'echo "<token>"'),
+            (f'echo "before {split}"', 'echo "before <token>"'),
+            (f"echo {split} done", "echo <token> done"),
+            ("echo 'ghp_'" + body, "echo <token>"),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(self.scrubber.scrub(command), expected)
+
+    def test_bare_assignment_values_preserve_closing_quotes(self) -> None:
+        for quote in ('"', "'"):
+            with self.subTest(quote=quote):
+                self.assertEqual(
+                    self.scrubber.scrub(
+                        f"git commit -m {quote}rotate token: done{quote}"
+                    ),
+                    f"git commit -m {quote}rotate token: <redacted>{quote}",
+                )
+
+    def test_assignment_quote_fidelity_does_not_expose_joined_values(self) -> None:
+        tail = "Synthetic" + "Tail42"
+        for value in (
+            "head'" + tail + "'",
+            'head"' + tail + '"',
+            "<redacted>" + tail,
+            "<redacted>'" + tail + "'",
+        ):
+            with self.subTest(value=value):
+                clean = self.scrubber.scrub("API_TOKEN=" + value)
+                self.assertNotIn(tail, clean)
+
+    def test_quoted_credentials_consume_attached_unquoted_tails(self) -> None:
+        tail = "Synthetic" + "Tail42"
+        for command in (
+            f'API_TOKEN="head"{tail}',
+            "--password 'ab'cdef",
+            f'--password "head"{tail},more; echo after',
+            f'API_TOKEN="head"{tail}&echo after',
+        ):
+            with self.subTest(command=command):
+                clean = self.scrubber.scrub(command)
+                for secret in ("head", tail, "cdef", "more"):
+                    self.assertNotIn(secret, clean)
+                self.assertIn("<redacted>", clean)
+                if "echo after" in command:
+                    self.assertIn("echo after", clean)
+
+    def test_rescans_choose_the_most_redacted_variant(self) -> None:
+        body = "Ab12Cd34" + "Ef56Gh78Ij90"
+        for prefix in ("gh'p_'", "gh'p%5F'", "ghp%2'5'5F"):
+            with self.subTest(prefix=prefix):
+                clean = self.scrubber.scrub(
+                    "echo " + prefix + body + "%2Fhome%2Fzoe%2Fnotes"
+                )
+                self.assertEqual(clean, "echo <token>/home/<user>/notes")
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_rescans_keep_the_earlier_variant_on_equal_redaction(self) -> None:
+        self.assertEqual(
+            self.scrubber.scrub("echo %2Fhome%2Fzoe%2Fnotes%2520after"),
+            "echo /home/<user>/notes%20after",
+        )
+
+    def test_short_lines_and_near_limit_lines_scrub_in_bounded_time(self) -> None:
+        # Each case is isolated so quadratic regressions cannot hang the suite.
+        samples = [
+            "mysql" + ending
+            for ending in (
+                "\n",
+                "\r",
+                "\r\n",
+                "\v",
+                "\f",
+                "\x1c",
+                "\x1d",
+                "\x1e",
+                "\x85",
+                "\u2028",
+                "\u2029",
+            )
+        ]
+        cases = [(sample, 30000) for sample in samples]
+        cases.append(("-----BEGIN PRIVATE KEY-----\n", 30000))
+        # These remain below the guard and must actually exercise the regexes.
+        cases.extend(
+            (sample[:4095], 1)
+            for sample in (
+                "mysql " * 683,
+                "token" * 819,
+                "a." * 2048,
+                '"' * 4095,
+                "-----BEGIN PRIVATE KEY-----" + "x" * 4095,
+            )
+        )
+        for sample, repeats in cases:
+            with self.subTest(sample=repr(sample[:28]), repeats=repeats):
+                program = (
+                    "from charter_replay.importer import Scrubber; "
+                    "s = Scrubber(); "
+                    f"s.scrub({sample!r} * {repeats})"
+                )
+                started = time.monotonic()
+                result = subprocess.run(
+                    [sys.executable, "-c", program],
+                    capture_output=True,
+                    timeout=10,
+                    check=True,
+                )
+                self.assertEqual(result.stdout, b"")
+                self.assertLess(time.monotonic() - started, 10)
+
+    def test_multiline_private_keys_are_scrubbed_before_line_processing(self) -> None:
+        for label in ("", "RSA ", "EC ", "ENCRYPTED "):
+            with self.subTest(label=label):
+                text = (
+                    "echo before\n"
+                    f"-----BEGIN {label}PRIVATE KEY-----\n"
+                    "fictional key material\n" + "x" * 5000 + "\n"
+                    f"-----END {label}PRIVATE KEY-----\n"
+                    "echo after\n"
+                )
+                self.assertEqual(
+                    self.scrubber.scrub(text),
+                    "echo before\n<private-key>\necho after\n",
+                )
+
+    def test_percent_encoded_multiline_private_keys_are_scrubbed(self) -> None:
+        text = (
+            "-----BEGIN PRIVATE KEY-----\n"
+            "fictional key material\n"
+            "-----END PRIVATE KEY-----"
+        )
+        encoded = text.replace(" ", "%20").replace("\n", "%0A")
+        self.assertEqual(self.scrubber.scrub("echo " + encoded), "echo <private-key>")
+
+    def test_long_dotted_lines_scrub_in_bounded_time(self) -> None:
+        # Isolate the timing check so an old quadratic regex cannot hang the suite.
+        program = (
+            "from charter_replay.importer import Scrubber; "
+            "s = Scrubber(); "
+            "[s.scrub(line) for line in "
+            "('a.' * 50000, 'a-' * 50000, 'a_' * 50000, "
+            "'a.' * 50000 + '@example.com', "
+            "'https://' + 'a.' * 50000)]"
+        )
+        started = time.monotonic()
+        result = subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            timeout=10,
+            check=True,
+        )
+        self.assertEqual(result.stdout, b"")
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_oversized_lines_are_redacted_without_losing_other_lines(self) -> None:
+        text = "echo before\n" + "a." * 50000 + "\necho after\n"
+        self.assertEqual(
+            self.scrubber.scrub(text),
+            "echo before\n<redacted>\necho after\n",
+        )
+        boundary = "x " * 2048
+        self.assertEqual(self.scrubber.scrub(boundary), boundary)
+        self.assertEqual(self.scrubber.scrub(boundary + "x"), "<redacted>")
+        # Guard Unicode and alternate line separators too; no payload survives.
+        for ending in ("\r\n", "\r", "\u2028"):
+            self.assertEqual(
+                self.scrubber.scrub("a." * 50000 + ending + "echo after"),
+                "<redacted>" + ending + "echo after",
+            )
+
+    def test_double_percent_encoding_and_unsigned_jwts_are_scrubbed(self) -> None:
+        body = "Ab12Cd34" + "Ef56Gh78Ij90"
+        unsigned = "ey" + "JhbGciOiJub25lIn0.eyJzdWIiOiJmaWN0aW9uYWwifQ."
+        for command, secret in (
+            ("echo ghp%255F" + body, body),
+            ("echo gh'p%255F'" + body, body),
+            ("echo " + unsigned, unsigned),
+        ):
+            with self.subTest(command=command[:16]):
+                self.assertNotIn(secret, self.scrubber.scrub(command))
+                self.assertIn("<token>", self.scrubber.scrub(command))
+
+    def test_percent_escapes_split_by_quotes_are_scrubbed(self) -> None:
+        body = "Ab12Cd34" + "Ef56Gh78Ij90"
+        for prefix in ("ghp%5'F'", "ghp%2'5'5F"):
+            with self.subTest(prefix=prefix):
+                self.assertNotIn(body, self.scrubber.scrub("echo " + prefix + body))
+
+    def test_mysql_attached_passwords_are_scrubbed(self) -> None:
+        secret = "fictional" + "MysqlPw42"
+        for command in (
+            f"mysql -p{secret} db",
+            f'mysql -p"{secret}" db',
+            f"mysql.exe --host example.com -p{secret}; echo done",
+        ):
+            with self.subTest(command=command[:16]):
+                clean = self.scrubber.scrub(command)
+                self.assertNotIn(secret, clean)
+                self.assertIn("-p<redacted>", clean)
+        self.assertEqual(self.scrubber.scrub("mysql -p db"), "mysql -p db")
+
+    def test_powershell_plaintext_secure_strings_are_scrubbed(self) -> None:
+        secret = "fictional" + "SecurePw42"
+        for value in (f'"{secret}"', f"'{secret}'", secret):
+            command = f"ConvertTo-SecureString {value} -AsPlainText -Force; echo done"
+            clean = self.scrubber.scrub(command)
+            self.assertNotIn(secret, clean)
+            self.assertIn("; echo done", clean)
+        self.assertNotIn(
+            secret,
+            self.scrubber.scrub(
+                f'ConvertTo-SecureString -String "{secret}" -AsPlainText -Force'
+            ),
+        )
+
+    def test_underscore_hosts_and_nested_private_urls_are_scrubbed(self) -> None:
+        for command in (
+            "curl https://build_node.corp/team/project",
+            "git clone git@build_node.corp:team/project",
+            "curl https://example.com/?next=https://build_node.corp/team/project",
+            'curl "https://example.com/?next=https://build_node.corp/team/project&ok=1"',
+            "curl https://example.com/?next=https%3A%2F%2Fbuild_node.corp%2Fteam%2Fproject",
+        ):
+            with self.subTest(command=command[:30]):
+                clean = self.scrubber.scrub(command)
+                self.assertNotIn("build_node", clean)
+                self.assertNotIn("team", clean)
+                self.assertNotIn("project", clean)
+                self.assertIn("<host>", clean)
+        self.assertIn("https://example.com/", clean)
+
+    def test_quoted_spaced_home_names_after_a_prefix_are_scrubbed(self) -> None:
+        for command in (
+            r'echo "prefix C:\Users\Jane Roe\notes"',
+            'echo "prefix /home/Jane Roe/notes"',
+            "echo 'prefix /Users/Jane Roe/notes'",
+        ):
+            clean = self.scrubber.scrub(command)
+            self.assertNotIn("Jane", clean)
+            self.assertNotIn("Roe", clean)
+            self.assertIn("prefix", clean)
+            self.assertIn("notes", clean)
+
+    def test_scrubbing_is_idempotent_and_known_secrets_never_survive(self) -> None:
+        body = "Ab12Cd34" + "Ef56Gh78Ij90"
+        jwt = "ey" + "JhbGciOiJub25lIn0.eyJzdWIiOiJmaWN0aW9uYWwifQ."
+        password = "fictional" + "SecurePw42"
+        # Fixed corpus drawn from the inputs above, including #62's regressions.
+        corpus = [
+            "echo gh'p%5F'" + body,
+            f"echo \"gh'p_'{body} done\"",
+            "echo ghp%255F" + body,
+            "echo ghp%2'5'5F" + body,
+            "echo " + jwt,
+            f"mysql -p{password} db",
+            f'ConvertTo-SecureString "{password}" -AsPlainText',
+            r"cat \\fs01\c$\Users\jdoe\x",
+            r"cat \\wsl.localhost\Ubuntu\home\jdoe\x",
+            r'echo "prefix C:\Users\Jane Roe\notes"',
+            'git commit -m "rotate token: done"',
+            "curl https://example.com/?next=https://build_node.corp/team/project",
+            'curl "https://build.corp/search?q=O\'Reilly&customer=AcmeSecret"',
+            "curl https://example.com/?user=zoe%40mail.example",
+            "curl https://example.com/?path=%2Fhome%2Fzoe%2Fnotes",
+            'curl --data \'{"api_key":"x","b":1}\'',
+            'curl -d "{\\"api_key\\":\\"' + password + '\\"}"',
+            "gh pr view 1 --repo ownerlogin/secretproject",
+            "git clone git@buildhost:team/secret.git|wc",
+            "token" * 20000,
+            "a." * 50000,
+        ]
+        secrets = (
+            body,
+            jwt,
+            password,
+            "jdoe",
+            "Jane Roe",
+            "build_node",
+            "AcmeSecret",
+            "zoe",
+        )
+        for index, command in enumerate(corpus):
+            with self.subTest(index=index):
+                clean = self.scrubber.scrub(command)
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+                for secret in secrets:
+                    self.assertNotIn(secret, clean)
 
     def test_extra_terms_match_inside_joined_paths(self) -> None:
         text = self.scrubber.scrub("cd /src/ProjectPhoenix-app && ls xprojectphoenix")
@@ -306,7 +628,11 @@ class GitBoundaryTests(unittest.TestCase):
     def test_output_inside_an_unignored_work_tree_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            (repo / ".git" / "objects").mkdir(parents=True)
+            (repo / ".git" / "refs").mkdir()
+            (repo / ".git" / "HEAD").write_text(
+                "ref: refs/heads/main\n", encoding="utf-8"
+            )
             self.assertFalse(output_is_private(repo / "corpus"))
             ignore = repo / ".gitignore"
             ignore.write_text("/corpus/events.jsonl\n", encoding="utf-8")

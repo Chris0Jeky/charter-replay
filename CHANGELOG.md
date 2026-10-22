@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `import` scrubbing closes the remaining #63 gaps: UNC admin-share and WSL
+  home paths (server and user), double percent-encoding, unsigned JWTs,
+  `mysql -p…` and PowerShell `-AsPlainText` values, underscore hosts, private URLs
+  nested in public ones, and quote fidelity after redaction. Lines longer than
+  4,096 characters are replaced whole to keep scrubbing time bounded.
+
 - `import` scrubbing closes gaps found by a privacy audit: short-payload JWTs and
   `npm_` tokens, credential names with digits (`API_KEY2=`) and quoted JSON/YAML
   keys, percent-encoded and quote-concatenated values, quoted home folders whose

@@ -37,15 +37,68 @@ CODEX_SHELL_CALLS = frozenset({"shell_command", "shell"})
 _PLAIN_WORD = re.compile(r"^[A-Za-z0-9_./:=@%+,-]+$")
 _FAMILY_WORD = re.compile(r"[^a-z0-9]+")
 
+# Bound regex work per line; dropping an oversized line avoids both expensive
+# near-matches and leaking a credential cut in half by chunking.
+_MAX_SCRUB_LINE = 4096
+_LINE_ENDINGS = "\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029"
+_LINE_BREAKS = r"\r\n\v\f\x1c-\x1e\x85\u2028\u2029"
+# Do not let a missing END rescan through subsequent BEGIN markers. Both the
+# labels and body are bounded; this is the only whole-text scrubbing regex.
+_PRIVATE_KEY = re.compile(
+    r"-----BEGIN [A-Z ]{0,64}PRIVATE KEY-----"
+    r"(?:(?!-----BEGIN )[\s\S]){0,65536}?"
+    r"-----END [A-Z ]{0,64}PRIVATE KEY-----"
+)
+_QUOTED_CREDENTIAL = (
+    rf"\\\"[^\\\"{_LINE_BREAKS}]*\\\"|"
+    rf'"[^"{_LINE_BREAKS}]*"|'
+    rf"'[^'{_LINE_BREAKS}]*'"
+)
+_CREDENTIAL_NAME = (
+    r"[A-Za-z0-9_]{0,64}(?:token|secret|passw(?:or)?d|api[_-]?key|auth)"
+    r"[A-Za-z0-9_]{0,64}"
+)
+# Recognise our own marker before a bare value: a second pass must not swallow
+# JSON punctuation and neighbouring fields after an already-redacted value.
+_CREDENTIAL_VALUE = (
+    r"(<redacted>(?=[,}\]])|(?:" + _QUOTED_CREDENTIAL + r")[^\s;&|]*|[^\s;&|]+)"
+)
+
+
+def _redact_credential(match: re.Match[str]) -> str:
+    value = match.group(2)
+    # A bare value can end at the enclosing command's quote. Preserve that
+    # unmatched delimiter, but still remove complete quote-concatenated values.
+    closing = value[-1] if value[-1] in "\"'" else ""
+    if closing and value.count(closing) % 2 == 0:
+        closing = ""
+    return match.group(1) + "<redacted>" + closing
+
+
 # Order matters: specific credential shapes before generic ones, paths before
 # bare usernames.
 _TOKEN_PATTERNS = (
     (
         re.compile(
-            r"(?i)(--?(?:password|passwd|pass|token|secret|api-?key|client-secret)"
-            r"(?:=|\s+))(\"[^\"]*\"|'[^']*'|[^\s;&|]+)"
+            rf"(?i)(\bmysql(?:\.exe)?\b[^;{_LINE_BREAKS}|&]{{0,256}}?\s-p)"
+            + _CREDENTIAL_VALUE
         ),
-        r"\1<redacted>",
+        _redact_credential,
+    ),
+    (
+        re.compile(
+            r"(?i)(\bConvertTo-SecureString\s+(?:-String\s+)?)"
+            + _CREDENTIAL_VALUE
+            + r"(?=\s+-AsPlainText\b)"
+        ),
+        _redact_credential,
+    ),
+    (
+        re.compile(
+            r"(?i)(--?(?:password|passwd|pass|token|secret|api-?key|client-secret)"
+            r"(?:=|\s+))" + _CREDENTIAL_VALUE
+        ),
+        _redact_credential,
     ),
     (
         re.compile(r"((?:^|\s)(?:-u|--user)(?:=|\s+))[^\s:]+:[^\s;&|]+"),
@@ -59,7 +112,9 @@ _TOKEN_PATTERNS = (
     (re.compile(r"\bAIza[0-9A-Za-z_-]{30,}"), "<token>"),
     (re.compile(r"\bnpm_[A-Za-z0-9]{20,}"), "<token>"),
     (
-        re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{2,}\.[A-Za-z0-9_-]{8,}"),
+        re.compile(
+            r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{2,}\.(?:[A-Za-z0-9_-]{8,})?"
+        ),
         "<token>",
     ),
     (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 <token>"),
@@ -69,19 +124,22 @@ _TOKEN_PATTERNS = (
         r"\1 <token>",
     ),
     (
+        # Scrub JSON strings individually before shell matching can consume
+        # attached punctuation. The marker then preserves neighbouring fields.
         re.compile(
-            r"(?i)\b([A-Za-z0-9_]{0,64}(?:token|secret|passw(?:or)?d|api[_-]?key|auth)"
-            r"[A-Za-z0-9_]{0,64}\\?[\"']?\s*[=:]\s*)"
-            r"(\\\"[^\\\"]*\\\"|\"[^\"]*\"|'[^']*'|[^\s;&|]+)"
+            r"(?i)(\b"
+            + _CREDENTIAL_NAME
+            + r"""\\?["']\s*:\s*)("""
+            + _QUOTED_CREDENTIAL
+            + r")(?=[,}\]])"
         ),
-        r"\1<redacted>",
+        _redact_credential,
     ),
     (
         re.compile(
-            r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
-            re.S,
+            r"(?i)\b(" + _CREDENTIAL_NAME + r"\\?[\"']?\s*[=:]\s*)" + _CREDENTIAL_VALUE
         ),
-        "<private-key>",
+        _redact_credential,
     ),
     (re.compile(r"\b[0-9a-fA-F]{32,}\b"), "<hex>"),
     (re.compile(r"[A-Za-z0-9+/]{48,}={0,2}"), "<blob>"),
@@ -96,17 +154,19 @@ _REPO_FLAG = re.compile(
 # Any scheme (https, ssh, git, ...): a private host loses its path too. Paths
 # stop at shell control characters so `url;next-command` keeps its command.
 _URL_HOST = re.compile(
-    r"(?i)\b([a-z][a-z0-9+.-]*://)([A-Za-z0-9.-]+)(:[0-9]+)?(/[^\s\"';&|<>()`]*)?"
+    r"(?i)\b([a-z][a-z0-9+.-]*://)([A-Za-z0-9_.-]+)(:[0-9]+)?(/[^\s\"';&|<>()`]*)?"
 )
 # scp-style remotes, dotted or single-label: `git@code.example.corp:team/x.git`,
 # `git@buildhost:team/x.git`.
 _SCP_REMOTE = re.compile(
-    r"\b[\w.-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*):(?!//)([^\s\"';&|<>()`]+)"
+    r"\b[\w.-]+@([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*):(?!//)([^\s\"';&|<>()`]+)"
 )
 # A quoted URL keeps `&`, `;` and `|` in its query; only the quote ends it.
-_QUOTED_URL = re.compile(r"(?i)(['\"])([a-z][a-z0-9+.-]*://(?:(?!\1)[^\n])*)\1")
+_QUOTED_URL = re.compile(
+    rf"(?i)(['\"])([a-z][a-z0-9+.-]*://(?:(?!\1)[^{_LINE_BREAKS}])*)\1"
+)
 _URL_HOST_QUOTED = re.compile(
-    r"(?i)\A([a-z][a-z0-9+.-]*://)([A-Za-z0-9.-]+)(:[0-9]+)?([/?#]\S*)?"
+    r"(?i)\A([a-z][a-z0-9+.-]*://)([A-Za-z0-9_.-]+)(:[0-9]+)?([/?#]\S*)?"
 )
 _PERCENT = re.compile(r"%[0-9A-Fa-f]{2}")
 _PLACEHOLDER = re.compile(
@@ -130,13 +190,18 @@ _PUBLIC_HOSTS = frozenset(
 # separator or quote, not whitespace, ends the username there.
 # UNC homes (\\server\Users\name): both the server and the name identify.
 _UNC_HOME = re.compile(
-    r"(?i)(?<![:\w])(\\\\|//)[^\\/\s\"']+([\\/]+Users[\\/]+)[^\\/\s\"']+"
+    r"(?i)(?<![:\w])(\\\\|//)[^\\/\s\"']+"
+    r"((?:[\\/]+[A-Z]\$)?[\\/]+Users[\\/]+|"
+    r"[\\/]+[^\\/\s\"']+[\\/]+home[\\/]+)[^\\/\s\"']+"
 )
 _QUOTED_HOME_PATHS = (
     re.compile(
-        r"(?i)([\"'][A-Z]:[\\/]+(?:Users|Documents and Settings)[\\/]+)[^\\/\"']+"
+        rf"(?i)([\"'][^\"'{_LINE_BREAKS}]{{0,256}}?[A-Z]:[\\/]+"
+        rf"(?:Users|Documents and Settings)[\\/]+)[^\\/\"'{_LINE_BREAKS}]+"
     ),
-    re.compile(r"([\"']/(?:Users|home)/)[^/\"']+"),
+    re.compile(
+        rf"([\"'][^\"'{_LINE_BREAKS}]{{0,256}}?/(?:Users|home)/)[^/\"'{_LINE_BREAKS}]+"
+    ),
 )
 _HOME_PATHS = (
     re.compile(
@@ -204,28 +269,55 @@ class Scrubber:
         ]
 
     def scrub(self, text: str) -> str:
-        text = self._scrub(text)
-        # Values hidden by percent-encoding or shell quote concatenation
-        # (gh'p_'..., ghp%5F...): rescan each word decoded, and keep the
-        # decoded, scrubbed form only where that removed something.
+        text = self._scrub_lines(text)
+        # Decode at most twice, including combined percent/quote splitting.
+        # Keep the most redacted variant; equal scores preserve earlier text.
         words = []
         for word in re.split(r"(\s+)", text):
-            for variant in (
-                urllib.parse.unquote(word) if _PERCENT.search(word) else word,
-                word.replace("'", "").replace('"', ""),
-                urllib.parse.unquote(word.replace("'", "").replace('"', "")),
-            ):
-                if variant != word:
-                    cleaned = self._scrub(variant)
-                    # Adopt only a rescan that hides something new, so an
-                    # already-redacted word keeps its shape.
-                    if len(_PLACEHOLDER.findall(cleaned)) > len(
-                        _PLACEHOLDER.findall(word)
-                    ):
-                        word = cleaned
+            variants = [word, self._dequote(word)]
+            # Dequote before decoding too: quotes can split the escape itself.
+            for base in tuple(variants):
+                for _ in range(2):
+                    if not _PERCENT.search(base):
                         break
-            words.append(word)
+                    base = urllib.parse.unquote(base)
+                    variants.append(base)
+            best = word
+            best_count = len(_PLACEHOLDER.findall(word))
+            candidates = variants[1:] + [self._dequote(v) for v in variants]
+            for variant in dict.fromkeys(candidates):
+                if variant != word:
+                    cleaned = self._scrub_lines(variant)
+                    count = len(_PLACEHOLDER.findall(cleaned))
+                    if count > best_count:
+                        best, best_count = cleaned, count
+            words.append(best)
         return "".join(words)
+
+    def _scrub_lines(self, text: str) -> str:
+        lines = []
+        for line in _PRIVATE_KEY.sub("<private-key>", text).splitlines(keepends=True):
+            body = line.rstrip(_LINE_ENDINGS)
+            lines.append(
+                ("<redacted>" if len(body) > _MAX_SCRUB_LINE else self._scrub(body))
+                + line[len(body) :]
+            )
+        return "".join(lines)
+
+    @staticmethod
+    def _dequote(word: str) -> str:
+        # Keep matching outer quotes and a quote that continues into another
+        # whitespace-separated word. Remove paired quotes inside a joined word.
+        prefix = suffix = ""
+        if word and word[0] in "\"'":
+            quote = word[0]
+            if word.endswith(quote) or word.count(quote) % 2:
+                prefix = quote
+        if len(word) > 1 and word[-1] in "\"'":
+            quote = word[-1]
+            if word.startswith(quote) or word.count(quote) % 2:
+                suffix = quote
+        return prefix + word.replace("'", "").replace('"', "") + suffix
 
     def _scrub(self, text: str) -> str:
         # Names containing a space go first: the home-path rule stops at
@@ -250,10 +342,15 @@ class Scrubber:
             text = pattern.sub("<redacted>", text)
         return text
 
-    @staticmethod
-    def _host(match: re.Match[str]) -> str:
+    @classmethod
+    def _host(cls, match: re.Match[str]) -> str:
         host = match.group(2).lower()
         if host in _PUBLIC_HOSTS:
+            # A public URL can carry a private URL in its query. Scan its tail
+            # rather than letting the outer match shield the nested address.
+            tail = match.group(4)
+            if tail:
+                return match.group(0)[: -len(tail)] + _URL_HOST.sub(cls._host, tail)
             return match.group(0)
         return f"{match.group(1)}<host>" + ("/<path>" if match.group(4) else "")
 
