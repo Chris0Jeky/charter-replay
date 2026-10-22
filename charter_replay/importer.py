@@ -104,7 +104,7 @@ _SCP_REMOTE = re.compile(
     r"\b[\w.-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*):(?!//)([^\s\"';&|<>()`]+)"
 )
 # A quoted URL keeps `&`, `;` and `|` in its query; only the quote ends it.
-_QUOTED_URL = re.compile(r"(?i)(['\"])([a-z][a-z0-9+.-]*://[^'\"]*)\1")
+_QUOTED_URL = re.compile(r"(?i)(['\"])([a-z][a-z0-9+.-]*://(?:(?!\1)[^\n])*)\1")
 _URL_HOST_QUOTED = re.compile(
     r"(?i)\A([a-z][a-z0-9+.-]*://)([A-Za-z0-9.-]+)(:[0-9]+)?([/?#]\S*)?"
 )
@@ -128,6 +128,10 @@ _PUBLIC_HOSTS = frozenset(
 )
 # Inside quotes a home folder may hold a space ("C:\Users\Jane Roe\x"), so the
 # separator or quote, not whitespace, ends the username there.
+# UNC homes (\\server\Users\name): both the server and the name identify.
+_UNC_HOME = re.compile(
+    r"(?i)(?<![:\w])(\\\\|//)[^\\/\s\"']+([\\/]+Users[\\/]+)[^\\/\s\"']+"
+)
 _QUOTED_HOME_PATHS = (
     re.compile(
         r"(?i)([\"'][A-Z]:[\\/]+(?:Users|Documents and Settings)[\\/]+)[^\\/\"']+"
@@ -135,7 +139,6 @@ _QUOTED_HOME_PATHS = (
     re.compile(r"([\"']/(?:Users|home)/)[^/\"']+"),
 )
 _HOME_PATHS = (
-    re.compile(r"(?i)((?<![:\w])(?:\\\\|//)[^\\/\s\"']+[\\/]+Users[\\/]+)[^\\/\s\"']+"),
     re.compile(
         r"(?i)\b([A-Z]:[\\/]+(?:Users|Documents and Settings)[\\/]+)[^\\/\s\"']+"
     ),
@@ -210,6 +213,7 @@ class Scrubber:
             for variant in (
                 urllib.parse.unquote(word) if _PERCENT.search(word) else word,
                 word.replace("'", "").replace('"', ""),
+                urllib.parse.unquote(word.replace("'", "").replace('"', "")),
             ):
                 if variant != word:
                     cleaned = self._scrub(variant)
@@ -239,6 +243,7 @@ class Scrubber:
         text = _REPO_FLAG.sub(r"\1<owner>/<repo>", text)
         text = _QUOTED_URL.sub(self._quoted_url, text)
         text = _URL_HOST.sub(self._host, text)
+        text = _UNC_HOME.sub(r"\1<host>\2<user>", text)
         for pattern in _QUOTED_HOME_PATHS + _HOME_PATHS:
             text = pattern.sub(r"\1<user>", text)
         for pattern in self._term_patterns:

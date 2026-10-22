@@ -170,6 +170,21 @@ class ScrubberTests(unittest.TestCase):
             with self.subTest(text=text[:24]):
                 self.assertNotIn(secret, self.scrubber.scrub(text))
 
+    def test_codex_review_shapes_are_scrubbed(self) -> None:
+        body = "Ab12Cd34Ef56Gh78Ij90Kl12Mn34Op56Qr78"
+        for text, secrets in (
+            ("echo gh'p%5F'" + body, (body,)),
+            (
+                'curl "https://build.corp/search?q=O\'Reilly&customer=AcmeSecret"',
+                ("Reilly", "AcmeSecret", "build.corp"),
+            ),
+            (r"cat \\private-build-17\Users\zoe\notes", ("private-build-17", "zoe")),
+        ):
+            with self.subTest(text=text[:16]):
+                scrubbed = self.scrubber.scrub(text)
+                for secret in secrets:
+                    self.assertNotIn(secret, scrubbed)
+
     def test_long_keyword_runs_scrub_in_bounded_time(self) -> None:
         # Unbounded name runs made this ~100 KB line take over a minute.
         started = time.monotonic()
