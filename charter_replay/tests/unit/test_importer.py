@@ -295,6 +295,149 @@ class ScrubberTests(unittest.TestCase):
                 self.assertEqual(clean, "echo <token>/home/<user>/notes")
                 self.assertEqual(self.scrubber.scrub(clean), clean)
 
+    def test_credential_values_on_the_next_nonempty_line_are_redacted(self) -> None:
+        value = "fictional" + "NextValue42"
+        for ending in ("\n", "\r\n", "\r", "\u2028"):
+            for key in ("password:", "API_TOKEN=", '"api_key":', "--password", "-p"):
+                with self.subTest(ending=repr(ending), key=key):
+                    text = key + ending + "  " + ending + f"  {value} keep"
+                    expected = key + ending + "  " + ending + "  <redacted> keep"
+                    clean = self.scrubber.scrub(text)
+                    self.assertEqual(clean, expected)
+                    self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_multiline_quoted_credentials_are_redacted_through_closing_quote(
+        self,
+    ) -> None:
+        first = "fictional" + "First42"
+        second = "fictional" + "Second42"
+        for prefix in ("export DB_PASSWORD=", "curl --password ", "password:\n  "):
+            for quote in ('"', "'"):
+                with self.subTest(prefix=prefix, quote=quote):
+                    text = f"{prefix}{quote}{first}\n\n{second}{quote}; echo after"
+                    clean = self.scrubber.scrub(text)
+                    self.assertNotIn(first, clean)
+                    self.assertNotIn(second, clean)
+                    self.assertTrue(clean.endswith("; echo after"))
+                    self.assertEqual(clean.count("\n"), text.count("\n"))
+                    self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_multiline_quote_state_stops_at_line_budget_or_size_guard(self) -> None:
+        value = "fictional" + "Inside42"
+        # The opening line counts towards the 16-line budget.
+        text = 'API_TOKEN="' + value + "\n" + (value + "\n") * 15 + "echo after"
+        clean = self.scrubber.scrub(text)
+        self.assertNotIn(value, clean)
+        self.assertTrue(clean.endswith("echo after"))
+        self.assertEqual(self.scrubber.scrub(clean), clean)
+        for prefix in ('API_TOKEN="' + value, "password:"):
+            with self.subTest(prefix=prefix[:10]):
+                text = prefix + "\n" + "x" * 4097 + "\necho after"
+                clean = self.scrubber.scrub(text)
+                self.assertNotIn(value, clean)
+                self.assertTrue(clean.endswith("\n<redacted>\necho after"))
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_mysql_backslash_continuations_keep_credential_context(self) -> None:
+        value = "fictional" + "MysqlNext42"
+        for ending in ("\n", "\r\n"):
+            for middle in ("", "  --host example.com \\\n"):
+                with self.subTest(ending=repr(ending), middle=bool(middle)):
+                    text = (
+                        "mysql -u root \\"
+                        + ending
+                        + middle
+                        + f"  -p{value} db\necho after"
+                    )
+                    clean = self.scrubber.scrub(text)
+                    self.assertNotIn(value, clean)
+                    self.assertIn("-p<redacted> db", clean)
+                    self.assertTrue(clean.endswith("\necho after"))
+                    self.assertEqual(self.scrubber.scrub(clean), clean)
+        for flag in ("--password", "-p"):
+            text = f"mysql {flag} \\\n  {value} db"
+            clean = self.scrubber.scrub(text)
+            self.assertNotIn(value, clean)
+            self.assertEqual(self.scrubber.scrub(clean), clean)
+        # An escaped backslash or a finished command must not carry mysql scope.
+        for head in ("mysql -u root", "mysql -u root " + "\\" * 2, "echo ready \\"):
+            text = head + f"\n  -p{value} db"
+            self.assertEqual(self.scrubber.scrub(text), text)
+        text = f"mysql \\\n  -p{value} db; echo \\\n  -pkeep"
+        self.assertTrue(self.scrubber.scrub(text).endswith("\n  -pkeep"))
+
+    def test_credential_quote_concatenation_includes_spaces_in_later_segments(
+        self,
+    ) -> None:
+        first = "fictional" + "Joined42"
+        second = "fictional" + "Spaced42"
+        for prefix in ("curl --password ", "API_TOKEN=", "mysql -p"):
+            for value in (
+                f"\"{first}\"'{second} tail'",
+                f"'{first}'bare\"{second} tail\"'last part'",
+            ):
+                with self.subTest(prefix=prefix, quoted=value[0]):
+                    clean = self.scrubber.scrub(prefix + value + "; echo after")
+                    self.assertEqual(clean, prefix + "<redacted>; echo after")
+                    self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_pgp_private_key_blocks_are_redacted_whole(self) -> None:
+        material = "fictional" + "PgpBody42"
+        checksum = "=" + "Ab42"
+        text = (
+            "echo before\n-----BEGIN PGP PRIVATE KEY BLOCK-----\n\n"
+            + material
+            + "\nshort\n"
+            + checksum
+            + "\n-----END PGP PRIVATE KEY BLOCK-----\necho after\n"
+        )
+        clean = self.scrubber.scrub(text)
+        self.assertEqual(clean, "echo before\n<private-key>\necho after\n")
+        self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_quoted_credential_near_matches_scrub_in_bounded_time(self) -> None:
+        # Missing -AsPlainText forces the value matcher to reject the input.
+        # Escaped quotes must not have exponentially many segmentations.
+        sample = "ConvertTo-SecureString " + '\\"x\\"' * 800
+        program = (
+            "from charter_replay.importer import Scrubber; "
+            f"Scrubber().scrub({sample!r})"
+        )
+        started = time.monotonic()
+        result = subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            timeout=10,
+            check=True,
+        )
+        self.assertEqual(result.stdout, b"")
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_cross_line_credential_state_scrubs_many_short_lines_in_bounded_time(
+        self,
+    ) -> None:
+        program = (
+            "from charter_replay.importer import Scrubber; "
+            "s = Scrubber(); "
+            "value = 'fictional' + 'Timing42'; "
+            "sample = 'password:\\n\\n' + value + '\\n' "
+            "+ 'mysql ' + chr(92) + '\\n  -p' + value + '\\n' "
+            "+ 'API_TOKEN=\"' + value + '\\n' + value + '\"\\n'; "
+            "text = sample * 10000; "
+            "clean = s.scrub(text); "
+            "assert value not in clean; "
+            "assert s.scrub(clean) == clean"
+        )
+        started = time.monotonic()
+        result = subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            timeout=10,
+            check=True,
+        )
+        self.assertEqual(result.stdout, b"")
+        self.assertLess(time.monotonic() - started, 10)
+
     def test_rescans_keep_the_earlier_variant_on_equal_redaction(self) -> None:
         self.assertEqual(
             self.scrubber.scrub("echo %2Fhome%2Fzoe%2Fnotes%2520after"),

@@ -40,14 +40,15 @@ _FAMILY_WORD = re.compile(r"[^a-z0-9]+")
 # Bound regex work per line; dropping an oversized line avoids both expensive
 # near-matches and leaking a credential cut in half by chunking.
 _MAX_SCRUB_LINE = 4096
+_MAX_CREDENTIAL_LINES = 16
 _LINE_ENDINGS = "\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029"
 _LINE_BREAKS = r"\r\n\v\f\x1c-\x1e\x85\u2028\u2029"
 # Do not let a missing END rescan through subsequent BEGIN markers. Both the
 # labels and body are bounded; this is the only whole-text scrubbing regex.
 _PRIVATE_KEY = re.compile(
-    r"-----BEGIN [A-Z ]{0,64}PRIVATE KEY-----"
+    r"-----BEGIN [A-Z ]{0,64}PRIVATE KEY(?: BLOCK)?-----"
     r"(?:(?!-----BEGIN )[\s\S]){0,65536}?"
-    r"-----END [A-Z ]{0,64}PRIVATE KEY-----"
+    r"-----END [A-Z ]{0,64}PRIVATE KEY(?: BLOCK)?-----"
 )
 _QUOTED_CREDENTIAL = (
     rf"\\\"[^\\\"{_LINE_BREAKS}]*\\\"|"
@@ -60,9 +61,40 @@ _CREDENTIAL_NAME = (
 )
 # Recognise our own marker before a bare value: a second pass must not swallow
 # JSON punctuation and neighbouring fields after an already-redacted value.
+# Escaped quotes belong only to quoted segments, avoiding ambiguous repetition.
 _CREDENTIAL_VALUE = (
-    r"(<redacted>(?=[,}\]])|(?:" + _QUOTED_CREDENTIAL + r")[^\s;&|]*|[^\s;&|]+)"
+    r"(<redacted>(?=[,}\]])|(?:"
+    + _QUOTED_CREDENTIAL
+    + r"""|(?!\\")[^\s;&|'"])+(?:["'])?|[^\s;&|]+)"""
 )
+_CLOSED_CREDENTIAL = re.compile(_QUOTED_CREDENTIAL)
+_CREDENTIAL_PREFIX = re.compile(
+    r"(?i)(?:\bmysql(?:\.exe)?\b[^;|&]{0,256}?\s-p(?=\S|$)|"
+    r"--?(?:password|passwd|pass|token|secret|api-?key|client-secret)(?:=|\s+|$)|"
+    r"\b" + _CREDENTIAL_NAME + r"\\?[\"']?\s*[=:]\s*|(?<!\S)-p\s*$)"
+)
+_MYSQL_COMMAND = re.compile(r"(?i)\bmysql(?:\.exe)?\b[^;|&]*$")
+_MYSQL_CONTINUED_PREFIX = re.compile(r"(?<!\S)-p(?=\S)")
+_MYSQL_CONTINUED_VALUE = re.compile(r"((?<!\S)-p)" + _CREDENTIAL_VALUE)
+
+
+def _credential_end(text: str, start: int, quote: str = "") -> tuple[int, str]:
+    """Scan one shell-like value, retaining an unfinished quote across lines."""
+    index = start
+    while index < len(text):
+        char = text[index]
+        if char == "\\" and quote != "'":
+            index += 2
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char.isspace() or char in ";&|":
+            break
+        elif char in "\"'":
+            quote = char
+        index += 1
+    return min(index, len(text)), quote
 
 
 def _redact_credential(match: re.Match[str]) -> str:
@@ -296,12 +328,79 @@ class Scrubber:
 
     def _scrub_lines(self, text: str) -> str:
         lines = []
+        waiting = False
+        quote = ""
+        quote_lines = 0
+        mysql_continued = False
         for line in _PRIVATE_KEY.sub("<private-key>", text).splitlines(keepends=True):
             body = line.rstrip(_LINE_ENDINGS)
-            lines.append(
-                ("<redacted>" if len(body) > _MAX_SCRUB_LINE else self._scrub(body))
-                + line[len(body) :]
+            ending = line[len(body) :]
+            if len(body) > _MAX_SCRUB_LINE:
+                lines.append("<redacted>" + ending)
+                waiting, quote, quote_lines, mysql_continued = False, "", 0, False
+                continue
+
+            # Only an odd trailing backslash escapes the physical line ending.
+            continued = bool(ending) and (len(body) - len(body.rstrip("\\"))) % 2 == 1
+            command = body[:-1] if continued else body
+            next_mysql = continued and (
+                bool(_MYSQL_COMMAND.search(command))
+                or (mysql_continued and not any(c in command for c in ";&|"))
             )
+            start = 0
+            if quote or (waiting and command.strip()):
+                if not quote:
+                    start = len(command) - len(command.lstrip())
+                end, quote = _credential_end(command, start, quote)
+                command = command[:start] + "<redacted>" + command[end:]
+                start += len("<redacted>")
+                waiting = False
+                quote_lines += 1
+
+            if not quote:
+                prefixes = list(_CREDENTIAL_PREFIX.finditer(command, start))
+                if mysql_continued:
+                    # Shell controls end the inherited mysql command's scope.
+                    limit = re.search(r"[;&|]", command)
+                    prefixes.extend(
+                        _MYSQL_CONTINUED_PREFIX.finditer(
+                            command, start, limit.start() if limit else len(command)
+                        )
+                    )
+                for match in sorted(prefixes, key=lambda match: match.end()):
+                    value_start = match.end()
+                    if value_start == len(command):
+                        waiting = True
+                    elif command[value_start] in "\"'":
+                        # A complete JSON value ends before its punctuation;
+                        # the enclosing shell quote is not part of the value.
+                        closed = _CLOSED_CREDENTIAL.match(command, value_start)
+                        if closed and command[closed.end() : closed.end() + 1] in (
+                            ",",
+                            "}",
+                            "]",
+                        ):
+                            continue
+                        _, open_quote = _credential_end(command, value_start)
+                        if open_quote:
+                            command = command[:value_start] + "<redacted>"
+                            quote, quote_lines = open_quote, 1
+                            break
+
+            if quote_lines >= _MAX_CREDENTIAL_LINES:
+                quote = ""
+            if not quote:
+                quote_lines = 0
+            if mysql_continued:
+                limit = re.search(r"[;&|]", command)
+                end = limit.start() if limit else len(command)
+                command = (
+                    _MYSQL_CONTINUED_VALUE.sub(_redact_credential, command[:end])
+                    + command[end:]
+                )
+            body = command + ("\\" if continued else "")
+            lines.append(self._scrub(body) + ending)
+            mysql_continued = next_mysql
         return "".join(lines)
 
     @staticmethod
