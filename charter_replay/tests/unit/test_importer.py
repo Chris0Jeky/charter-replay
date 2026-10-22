@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 from charter_replay import cli as kernel
@@ -112,6 +113,97 @@ class ScrubberTests(unittest.TestCase):
         self.assertIn("|wc", text)
         for private in ("private.corp", "buildhost", "team", "secret"):
             self.assertNotIn(private, text)
+
+    def test_short_jwts_and_npm_tokens_are_replaced(self) -> None:
+        samples = [
+            "ey" + "JhbGciOiJIUzI1NiJ9" + ".e30." + "aaIGT-BFLnc0LS81LJnR",
+            "np" + "m_" + "abcdefghij" * 3 + "0123456789",
+        ]
+        for secret in samples:
+            with self.subTest(prefix=secret[:4]):
+                self.assertNotIn(secret, self.scrubber.scrub(f"echo {secret}"))
+
+    def test_numbered_names_and_quoted_keys_are_redacted(self) -> None:
+        value = "Orange" + "Elephant42"
+        for text in (
+            f"API_KEY2={value} tool",
+            f"""curl --data '{{"api_key":"{value}"}}' https://example.com""",
+            f"""cfg "token": '{value}'""",
+        ):
+            with self.subTest(text=text[:12]):
+                self.assertNotIn(value, self.scrubber.scrub(text))
+
+    def test_percent_encoded_and_split_values_are_scrubbed(self) -> None:
+        body = "Ab12Cd34Ef56Gh78Ij90Kl12Mn34Op56Qr78"
+        cases = {
+            "echo gh'p_'" + body: body,
+            "echo ghp%5F" + body: body,
+            "curl https://example.com/?user=zoe%40mail.example": "zoe",
+            "curl https://example.com/?path=%2Fhome%2Fzoe%2Fnotes": "zoe",
+        }
+        for text, secret in cases.items():
+            with self.subTest(text=text[:16]):
+                self.assertNotIn(secret, self.scrubber.scrub(text))
+
+    def test_quoted_home_names_with_spaces_and_unc_homes_are_removed(self) -> None:
+        for text in (
+            r'cat "C:\Users\Jane Roe\notes"',
+            'cat "/Users/Jane Roe/notes"',
+            "cat '/home/Jane Roe/notes'",
+            r"cat \\server\Users\zoe\notes",
+            "cat //server/Users/zoe/notes",
+        ):
+            with self.subTest(text=text):
+                scrubbed = Scrubber().scrub(text)
+                self.assertNotIn("Roe", scrubbed)
+                self.assertNotIn("zoe", scrubbed)
+                self.assertIn("notes", scrubbed)
+
+    def test_escaped_json_keys_and_other_auth_schemes_are_redacted(self) -> None:
+        value = "s3cr3t" + "Value9"
+        hexish = "9f8e7d6c" + "5b4a3a2b1c0d"
+        for text, secret in (
+            ('curl -d "{\\"api_key\\":\\"' + value + '\\"}"', value),
+            ('curl -H "Authorization: Token ' + hexish + '"', hexish),
+            ('curl -H "Authorization: Bot ' + hexish + '"', hexish),
+        ):
+            with self.subTest(text=text[:24]):
+                self.assertNotIn(secret, self.scrubber.scrub(text))
+
+    def test_codex_review_shapes_are_scrubbed(self) -> None:
+        body = "Ab12Cd34Ef56Gh78Ij90Kl12Mn34Op56Qr78"
+        for text, secrets in (
+            ("echo gh'p%5F'" + body, (body,)),
+            (
+                'curl "https://build.corp/search?q=O\'Reilly&customer=AcmeSecret"',
+                ("Reilly", "AcmeSecret", "build.corp"),
+            ),
+            (r"cat \\private-build-17\Users\zoe\notes", ("private-build-17", "zoe")),
+        ):
+            with self.subTest(text=text[:16]):
+                scrubbed = self.scrubber.scrub(text)
+                for secret in secrets:
+                    self.assertNotIn(secret, scrubbed)
+
+    def test_long_keyword_runs_scrub_in_bounded_time(self) -> None:
+        # Unbounded name runs made this ~100 KB line take over a minute.
+        started = time.monotonic()
+        self.scrubber.scrub("token" * 20000)
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_rescans_keep_already_redacted_words_intact(self) -> None:
+        self.assertEqual(
+            Scrubber().scrub("""curl --data '{"api_key":"x","b":1}'"""),
+            """curl --data '{"api_key":<redacted>,"b":1}'""",
+        )
+
+    def test_quoted_private_urls_lose_their_whole_query(self) -> None:
+        text = self.scrubber.scrub(
+            "curl 'https://build.corp/secrets?x=1&customer=AcmeSecret' && ls"
+        )
+        self.assertNotIn("AcmeSecret", text)
+        self.assertNotIn("build.corp", text)
+        self.assertIn("' && ls", text)
 
     def test_extra_terms_match_inside_joined_paths(self) -> None:
         text = self.scrubber.scrub("cd /src/ProjectPhoenix-app && ls xprojectphoenix")

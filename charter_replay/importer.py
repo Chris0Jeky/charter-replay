@@ -20,6 +20,7 @@ import random
 from pathlib import Path
 import re
 import socket
+import urllib.parse
 import subprocess
 from typing import Any, Iterator
 
@@ -56,15 +57,22 @@ _TOKEN_PATTERNS = (
     (re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"), "<token>"),
     (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "<token>"),
     (re.compile(r"\bAIza[0-9A-Za-z_-]{30,}"), "<token>"),
+    (re.compile(r"\bnpm_[A-Za-z0-9]{20,}"), "<token>"),
     (
-        re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
+        re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{2,}\.[A-Za-z0-9_-]{8,}"),
         "<token>",
     ),
     (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 <token>"),
+    # Any other scheme (Token, Bot, ApiKey, Digest) after an Authorization header.
+    (
+        re.compile(r"(?i)\b(authorization\s*:\s*[A-Za-z]+)\s+[A-Za-z0-9._~+/=-]{8,}"),
+        r"\1 <token>",
+    ),
     (
         re.compile(
-            r"(?i)\b([A-Za-z_]*(?:token|secret|passw(?:or)?d|api[_-]?key|auth)"
-            r"[A-Za-z_]*\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|[^\s;&|]+)"
+            r"(?i)\b([A-Za-z0-9_]{0,64}(?:token|secret|passw(?:or)?d|api[_-]?key|auth)"
+            r"[A-Za-z0-9_]{0,64}\\?[\"']?\s*[=:]\s*)"
+            r"(\\\"[^\\\"]*\\\"|\"[^\"]*\"|'[^']*'|[^\s;&|]+)"
         ),
         r"\1<redacted>",
     ),
@@ -95,6 +103,15 @@ _URL_HOST = re.compile(
 _SCP_REMOTE = re.compile(
     r"\b[\w.-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*):(?!//)([^\s\"';&|<>()`]+)"
 )
+# A quoted URL keeps `&`, `;` and `|` in its query; only the quote ends it.
+_QUOTED_URL = re.compile(r"(?i)(['\"])([a-z][a-z0-9+.-]*://(?:(?!\1)[^\n])*)\1")
+_URL_HOST_QUOTED = re.compile(
+    r"(?i)\A([a-z][a-z0-9+.-]*://)([A-Za-z0-9.-]+)(:[0-9]+)?([/?#]\S*)?"
+)
+_PERCENT = re.compile(r"%[0-9A-Fa-f]{2}")
+_PLACEHOLDER = re.compile(
+    r"<(?:redacted|token|user|host|path|owner|repo|email|hex|blob|private-key)>"
+)
 _PUBLIC_HOSTS = frozenset(
     {
         "github.com",
@@ -108,6 +125,18 @@ _PUBLIC_HOSTS = frozenset(
         "localhost",
         "127.0.0.1",
     }
+)
+# Inside quotes a home folder may hold a space ("C:\Users\Jane Roe\x"), so the
+# separator or quote, not whitespace, ends the username there.
+# UNC homes (\\server\Users\name): both the server and the name identify.
+_UNC_HOME = re.compile(
+    r"(?i)(?<![:\w])(\\\\|//)[^\\/\s\"']+([\\/]+Users[\\/]+)[^\\/\s\"']+"
+)
+_QUOTED_HOME_PATHS = (
+    re.compile(
+        r"(?i)([\"'][A-Z]:[\\/]+(?:Users|Documents and Settings)[\\/]+)[^\\/\"']+"
+    ),
+    re.compile(r"([\"']/(?:Users|home)/)[^/\"']+"),
 )
 _HOME_PATHS = (
     re.compile(
@@ -175,6 +204,30 @@ class Scrubber:
         ]
 
     def scrub(self, text: str) -> str:
+        text = self._scrub(text)
+        # Values hidden by percent-encoding or shell quote concatenation
+        # (gh'p_'..., ghp%5F...): rescan each word decoded, and keep the
+        # decoded, scrubbed form only where that removed something.
+        words = []
+        for word in re.split(r"(\s+)", text):
+            for variant in (
+                urllib.parse.unquote(word) if _PERCENT.search(word) else word,
+                word.replace("'", "").replace('"', ""),
+                urllib.parse.unquote(word.replace("'", "").replace('"', "")),
+            ):
+                if variant != word:
+                    cleaned = self._scrub(variant)
+                    # Adopt only a rescan that hides something new, so an
+                    # already-redacted word keeps its shape.
+                    if len(_PLACEHOLDER.findall(cleaned)) > len(
+                        _PLACEHOLDER.findall(word)
+                    ):
+                        word = cleaned
+                        break
+            words.append(word)
+        return "".join(words)
+
+    def _scrub(self, text: str) -> str:
         # Names containing a space go first: the home-path rule stops at
         # whitespace. Every other term waits, so the repo and email rules still
         # see whole `owner/repo` and `user@domain` shapes.
@@ -188,8 +241,10 @@ class Scrubber:
         text = _EMAIL.sub("<email>", text)
         text = _REPOS_API.sub(r"\1<owner>/<repo>", text)
         text = _REPO_FLAG.sub(r"\1<owner>/<repo>", text)
+        text = _QUOTED_URL.sub(self._quoted_url, text)
         text = _URL_HOST.sub(self._host, text)
-        for pattern in _HOME_PATHS:
+        text = _UNC_HOME.sub(r"\1<host>\2<user>", text)
+        for pattern in _QUOTED_HOME_PATHS + _HOME_PATHS:
             text = pattern.sub(r"\1<user>", text)
         for pattern in self._term_patterns:
             text = pattern.sub("<redacted>", text)
@@ -201,6 +256,11 @@ class Scrubber:
         if host in _PUBLIC_HOSTS:
             return match.group(0)
         return f"{match.group(1)}<host>" + ("/<path>" if match.group(4) else "")
+
+    @classmethod
+    def _quoted_url(cls, match: re.Match[str]) -> str:
+        inner = _URL_HOST_QUOTED.sub(cls._host, match.group(2), count=1)
+        return f"{match.group(1)}{inner}{match.group(1)}"
 
     @staticmethod
     def _scp(match: re.Match[str]) -> str:
