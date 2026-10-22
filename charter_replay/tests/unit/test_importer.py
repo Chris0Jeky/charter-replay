@@ -158,6 +158,12 @@ class ScrubberTests(unittest.TestCase):
                 self.assertNotIn("zoe", scrubbed)
                 self.assertIn("notes", scrubbed)
 
+    def test_rescans_keep_already_redacted_words_intact(self) -> None:
+        self.assertEqual(
+            Scrubber().scrub("""curl --data '{"api_key":"x","b":1}'"""),
+            """curl --data '{"api_key":<redacted>,"b":1}'""",
+        )
+
     def test_quoted_private_urls_lose_their_whole_query(self) -> None:
         text = self.scrubber.scrub(
             "curl 'https://build.corp/secrets?x=1&customer=AcmeSecret' && ls"

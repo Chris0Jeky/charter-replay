@@ -103,6 +103,9 @@ _URL_HOST_QUOTED = re.compile(
     r"(?i)\A([a-z][a-z0-9+.-]*://)([A-Za-z0-9.-]+)(:[0-9]+)?([/?#]\S*)?"
 )
 _PERCENT = re.compile(r"%[0-9A-Fa-f]{2}")
+_PLACEHOLDER = re.compile(
+    r"<(?:redacted|token|user|host|path|owner|repo|email|hex|blob|private-key)>"
+)
 _PUBLIC_HOSTS = frozenset(
     {
         "github.com",
@@ -126,7 +129,7 @@ _QUOTED_HOME_PATHS = (
     re.compile(r"([\"']/(?:Users|home)/)[^/\"']+"),
 )
 _HOME_PATHS = (
-    re.compile(r"(?i)((?:\\\\|//)[^\\/\s\"']+[\\/]+Users[\\/]+)[^\\/\s\"']+"),
+    re.compile(r"(?i)((?<![:\w])(?:\\\\|//)[^\\/\s\"']+[\\/]+Users[\\/]+)[^\\/\s\"']+"),
     re.compile(
         r"(?i)\b([A-Z]:[\\/]+(?:Users|Documents and Settings)[\\/]+)[^\\/\s\"']+"
     ),
@@ -204,7 +207,11 @@ class Scrubber:
             ):
                 if variant != word:
                     cleaned = self._scrub(variant)
-                    if cleaned != variant:
+                    # Adopt only a rescan that hides something new, so an
+                    # already-redacted word keeps its shape.
+                    if len(_PLACEHOLDER.findall(cleaned)) > len(
+                        _PLACEHOLDER.findall(word)
+                    ):
                         word = cleaned
                         break
             words.append(word)
