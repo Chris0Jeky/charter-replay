@@ -375,11 +375,28 @@ class Scrubber:
                         )
                     )
                 scanned_end = start
+                shell_index = 0
+                shell_quote = ""
                 for match in sorted(prefixes, key=lambda match: match.end()):
                     if match.start() < scanned_end:
                         continue
                     value_start = match.end()
-                    if value_start == len(command):
+                    # Scan forward once to distinguish an enclosing closing
+                    # quote from the start of a multiline credential value.
+                    while shell_index < value_start:
+                        char = command[shell_index]
+                        if char == "\\" and shell_quote != "'":
+                            shell_index += 2
+                            continue
+                        if shell_quote:
+                            if char == shell_quote:
+                                shell_quote = ""
+                        elif char in "\"'":
+                            shell_quote = char
+                        shell_index += 1
+                    if value_start == len(command) or (
+                        shell_quote and command[value_start] == shell_quote
+                    ):
                         waiting = True
                     elif command[value_start] in "\"'":
                         # A complete JSON value ends before its punctuation;

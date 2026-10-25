@@ -421,6 +421,100 @@ class ScrubberTests(unittest.TestCase):
                     self.assertEqual(clean, expected)
                     self.assertEqual(self.scrubber.scrub(clean), clean)
 
+    def test_quoted_credential_prompts_redact_only_the_next_value(self) -> None:
+        following = "echo one\necho two\n\techo three  \n"
+        for prompt in (
+            'read -sp "Password: "',
+            "read -sp 'Password: '",
+            r'read -sp "say \"Password: "',
+            'echo "password:',
+            "echo 'password:",
+        ):
+            with self.subTest(prompt=prompt):
+                clean = self.scrubber.scrub(prompt + "\n" + following)
+                self.assertEqual(
+                    clean.split("\n", 1)[1],
+                    "<redacted> one\necho two\n\techo three  \n",
+                )
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_enclosing_quotes_do_not_hide_cross_line_credentials(self) -> None:
+        secret = "hunter2" + "Secret"
+        for head, tail in (
+            ('bash -c "export TOKEN=', '; run"'),
+            ("sh -c 'mysql -u root -p", " db'"),
+            ('ssh host "API_KEY=', ' ./deploy"'),
+            ('echo "password:"', ""),
+        ):
+            with self.subTest(head=head):
+                clean = self.scrubber.scrub(head + "\n" + secret + tail + "\n")
+                self.assertNotIn(secret, clean)
+                self.assertEqual(clean.split("\n", 1)[1], "<redacted>" + tail + "\n")
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_quoted_prompt_does_not_hide_multiline_credentials(self) -> None:
+        first, last = "abc" + "Secret", "tail" + "Secret"
+        following = "echo one\n\techo two  \n"
+        for prompt in ('read -sp "Password: "', "read -sp 'Password: '"):
+            for quote in ('"', "'"):
+                with self.subTest(prompt=prompt, quote=quote):
+                    text = (
+                        prompt + f"\nexport API_TOKEN={quote}{first}\n"
+                        f"{last}{quote}\n" + following
+                    )
+                    clean = self.scrubber.scrub(text)
+                    self.assertNotIn(first, clean)
+                    self.assertNotIn(last, clean)
+                    self.assertEqual(clean.split("\n", 3)[3], following)
+                    self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_comment_credential_keys_arm_cross_line_redaction(self) -> None:
+        secret = "fictional" + "NextValue42"
+        following = "echo one\n\techo two  \n"
+        for comment in (
+            "# password:",
+            "echo ready # password:",
+            "echo ready;# password:",
+            '# "password:',
+            "# API_TOKEN=",
+            "# --password",
+            "# -p",
+        ):
+            with self.subTest(comment=comment):
+                text = comment + f"\n  \n{secret} keep\n" + following
+                clean = self.scrubber.scrub(text)
+                self.assertNotIn(secret, clean)
+                self.assertEqual(
+                    clean.split("\n", 1)[1],
+                    "  \n<redacted> keep\n" + following,
+                )
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
+        clean = self.scrubber.scrub('# API_TOKEN="\n' + secret + '"\n' + following)
+        self.assertNotIn(secret, clean)
+        self.assertEqual(clean.split("\n", 2)[2], following)
+        self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_shell_context_before_a_real_credential_key(self) -> None:
+        secret = "fictional" + "NextValue42"
+        following = "echo one\n\techo two  \n"
+        for head in (
+            'echo "#"; ',
+            "echo '#'; ",
+            r"echo \#; ",
+            "echo word#suffix; ",
+            r"echo word\ #suffix; ",
+            r"echo \"; ",
+            "echo 'a\\'; ",
+            r'echo "a\\"; ',
+        ):
+            with self.subTest(head=head):
+                text = head + f"API_TOKEN=\n{secret}\n" + following
+                clean = self.scrubber.scrub(text)
+                self.assertEqual(clean, head + "API_TOKEN=\n<redacted>\n" + following)
+                self.assertNotIn(secret, clean)
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
     def test_cross_line_cuts_preserve_other_credential_rules(self) -> None:
         for index, (command, _, secrets) in enumerate(_review_redaction_cases()[:2]):
             with self.subTest(case=index):
