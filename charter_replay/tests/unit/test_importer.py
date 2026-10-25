@@ -11,8 +11,10 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 from charter_replay import cli as kernel
+from charter_replay import importer
 from charter_replay.importer import (
     Scrubber,
     build_private_corpus,
@@ -31,6 +33,38 @@ def _write_jsonl(path: Path, records: list[object]) -> None:
     path.write_text(
         "\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8"
     )
+
+
+def _review_redaction_cases() -> list[tuple[str, str, tuple[str, ...]]]:
+    password = "Hun" + "ter2"
+    apostrophe = "O'" + "Brien2024!"
+    cases = [
+        (
+            f"# connect with the root password:\nmysql -uroot -p{password} db",
+            "# connect with the root password:\nmysql -uroot -p<redacted> db",
+            (password,),
+        ),
+        (
+            f"echo \"password: 'see below\nbash -c 'mysql -uroot -p{password}'",
+            "echo \"password: <redacted> below\nbash -c 'mysql -uroot -p<redacted>'",
+            (password,),
+        ),
+    ]
+    for prefix, suffix in (
+        ("--password=", ""),
+        ("mysql -p", " db"),
+        ("API_TOKEN=", ""),
+        ("ConvertTo-SecureString ", " -AsPlainText"),
+        ("ConvertTo-SecureString -String ", " -AsPlainText -Force"),
+    ):
+        cases.append(
+            (
+                prefix + apostrophe + suffix,
+                prefix + "<redacted>" + suffix,
+                (apostrophe, "Brien2024!"),
+            )
+        )
+    return cases
 
 
 class ScrubberTests(unittest.TestCase):
@@ -80,6 +114,24 @@ class ScrubberTests(unittest.TestCase):
         )
         for secret in ("hunter2hunter2", "abc123def", "S3cretPw"):
             self.assertNotIn(secret, text)
+
+    def test_bare_credentials_consume_backslash_escaped_characters(self) -> None:
+        cases = (
+            (r"tool --password foo\"SecretTail", "tool --password <redacted>"),
+            (r"tool --password=foo\"SecretTail", "tool --password=<redacted>"),
+            (r"PASSWORD=foo\"SecretTail", "PASSWORD=<redacted>"),
+            (r"api_key: foo\"SecretTail", "api_key: <redacted>"),
+            (r"tool --password foo\'SecretTail", "tool --password <redacted>"),
+            (r"tool --password foo\\SecretTail", "tool --password <redacted>"),
+            (r"tool --password foo\XSecretTail", "tool --password <redacted>"),
+            (r"tool --password foo\ SecretTail", "tool --password <redacted>"),
+        )
+        for command, expected in cases:
+            with self.subTest(command=command):
+                clean = self.scrubber.scrub(command)
+                self.assertNotIn("SecretTail", clean)
+                self.assertEqual(clean, expected)
+                self.assertEqual(self.scrubber.scrub(clean), clean)
 
     def test_a_home_name_with_a_space_is_fully_removed(self) -> None:
         scrubber = Scrubber(["Jane Doe", "Jane", "Doe"])
@@ -294,6 +346,287 @@ class ScrubberTests(unittest.TestCase):
                 )
                 self.assertEqual(clean, "echo <token>/home/<user>/notes")
                 self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_credential_values_on_the_next_nonempty_line_are_redacted(self) -> None:
+        value = "fictional" + "NextValue42"
+        for ending in ("\n", "\r\n", "\r", "\u2028"):
+            for key in ("password:", "API_TOKEN=", '"api_key":', "--password", "-p"):
+                with self.subTest(ending=repr(ending), key=key):
+                    text = key + ending + "  " + ending + f"  {value} keep"
+                    expected = key + ending + "  " + ending + "  <redacted> keep"
+                    clean = self.scrubber.scrub(text)
+                    self.assertEqual(clean, expected)
+                    self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_cross_line_cuts_preserve_other_credential_rules(self) -> None:
+        for index, (command, _, secrets) in enumerate(_review_redaction_cases()[:2]):
+            with self.subTest(case=index):
+                clean = self.scrubber.scrub(command)
+                for secret in secrets:
+                    self.assertNotIn(secret, clean)
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_internal_unmatched_quotes_do_not_expose_value_suffixes(self) -> None:
+        for index, (command, expected, _) in enumerate(_review_redaction_cases()[2:]):
+            with self.subTest(case=index):
+                self.assertEqual(self.scrubber.scrub(command), expected)
+
+    def test_cross_line_scrub_never_exposes_single_line_redactions(self) -> None:
+        password = "fictional" + "SecurePw42"
+        body = "Ab12Cd34" + "Ef56Gh78Ij90"
+        jwt = "ey" + "JhbGciOiJub25lIn0.eyJzdWIiOiJmaWN0aW9uYWwifQ."
+        # Frozen main-era single-line outputs keep this oracle independent of
+        # both the cross-line state and changes to the value matcher.
+        corpus = _review_redaction_cases() + [
+            (f"mysql -p{password} db", "mysql -p<redacted> db", (password,)),
+            (
+                f'ConvertTo-SecureString "{password}" -AsPlainText',
+                "ConvertTo-SecureString <redacted> -AsPlainText",
+                (password,),
+            ),
+            ("echo " + jwt, "echo <token>", (jwt,)),
+            ("echo gh'p%5F'" + body, "echo <token>", (body,)),
+            ("echo ghp%255F" + body, "echo <token>", (body,)),
+            (
+                'curl -d "{\\"api_key\\":\\"' + password + '\\"}"',
+                'curl -d "{\\"api_key\\":<redacted>}"',
+                (password,),
+            ),
+            (
+                'curl --data \'{"api_key":"x","b":1}\'',
+                'curl --data \'{"api_key":<redacted>,"b":1}\'',
+                ("x",),
+            ),
+            (
+                'git commit -m "rotate token: done"',
+                'git commit -m "rotate token: <redacted>"',
+                ("done",),
+            ),
+            (
+                'curl "https://build.corp/search?q=O\'Reilly&customer=AcmeSecret"',
+                'curl "https://<host>/<path>"',
+                ("build.corp", "Reilly", "AcmeSecret"),
+            ),
+            (
+                "curl https://example.com/?next=https://build_node.corp/team/project",
+                "curl https://example.com/?next=https://<host>/<path>",
+                ("build_node", "team", "project"),
+            ),
+            (
+                "gh pr view 1 --repo ownerlogin/secretproject",
+                "gh pr view 1 --repo <owner>/<repo>",
+                ("ownerlogin", "secretproject"),
+            ),
+            (
+                "git clone git@buildhost:team/secret.git|wc",
+                "git clone <host>:<path>|wc",
+                ("buildhost", "team", "secret.git"),
+            ),
+            (
+                r"cat \\fs01\c$\Users\jdoe\x",
+                r"cat \\<host>\c$\Users\<user>\x",
+                ("jdoe",),
+            ),
+            (
+                r"cat \\wsl.localhost\Ubuntu\home\jdoe\x",
+                r"cat \\<host>\Ubuntu\home\<user>\x",
+                ("jdoe",),
+            ),
+            (
+                r'echo "prefix C:\Users\Jane Roe\notes"',
+                r'echo "prefix C:\Users\<user>\notes"',
+                ("Jane Roe",),
+            ),
+            (
+                "curl https://example.com/?user=zoe%40mail.example",
+                "curl https://example.com/?user=<email>",
+                ("zoe",),
+            ),
+            (
+                "curl https://example.com/?path=%2Fhome%2Fzoe%2Fnotes",
+                "curl https://example.com/?path=/home/<user>/notes",
+                ("zoe",),
+            ),
+            ("token" * 20000, "<redacted>", ("token",)),
+            ("a." * 50000, "<redacted>", ("a.",)),
+        ]
+        for index, (command, expected, secrets) in enumerate(corpus):
+            for prefix in ("", "password:\n", 'API_TOKEN="see below\n'):
+                with self.subTest(case=index, context=bool(prefix)):
+                    baseline = "\n".join(
+                        self.scrubber.scrub(line) for line in command.split("\n")
+                    )
+                    clean = self.scrubber.scrub(prefix + command)
+                    for secret in secrets:
+                        self.assertNotIn(secret, expected)
+                        self.assertNotIn(secret, baseline)
+                        self.assertNotIn(secret, clean)
+
+    def test_credential_prefixes_inside_a_scanned_value_are_not_rescanned(self) -> None:
+        command = '-pass=""' * 512
+        with mock.patch.object(
+            importer, "_credential_end", wraps=importer._credential_end
+        ) as scan:
+            self.scrubber._scrub_lines(command)
+        self.assertEqual(scan.call_count, 1)
+
+    def test_multiline_quoted_credentials_are_redacted_through_closing_quote(
+        self,
+    ) -> None:
+        first = "fictional" + "First42"
+        second = "fictional" + "Second42"
+        for prefix in ("export DB_PASSWORD=", "curl --password ", "password:\n  "):
+            for quote in ('"', "'"):
+                with self.subTest(prefix=prefix, quote=quote):
+                    text = f"{prefix}{quote}{first}\n\n{second}{quote}; echo after"
+                    clean = self.scrubber.scrub(text)
+                    self.assertNotIn(first, clean)
+                    self.assertNotIn(second, clean)
+                    self.assertTrue(clean.endswith("; echo after"))
+                    self.assertEqual(clean.count("\n"), text.count("\n"))
+                    self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_multiline_quote_state_stops_at_line_budget_or_size_guard(self) -> None:
+        value = "fictional" + "Inside42"
+        # The opening line counts towards the 16-line budget.
+        text = 'API_TOKEN="' + value + "\n" + (value + "\n") * 15 + "echo after"
+        clean = self.scrubber.scrub(text)
+        self.assertNotIn(value, clean)
+        self.assertTrue(clean.endswith("echo after"))
+        self.assertEqual(self.scrubber.scrub(clean), clean)
+        for prefix in ('API_TOKEN="' + value, "password:"):
+            with self.subTest(prefix=prefix[:10]):
+                text = prefix + "\n" + "x" * 4097 + "\necho after"
+                clean = self.scrubber.scrub(text)
+                self.assertNotIn(value, clean)
+                self.assertTrue(clean.endswith("\n<redacted>\necho after"))
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_mysql_backslash_continuations_keep_credential_context(self) -> None:
+        value = "fictional" + "MysqlNext42"
+        for ending in ("\n", "\r\n"):
+            for middle in ("", "  --host example.com \\\n"):
+                with self.subTest(ending=repr(ending), middle=bool(middle)):
+                    text = (
+                        "mysql -u root \\"
+                        + ending
+                        + middle
+                        + f"  -p{value} db\necho after"
+                    )
+                    clean = self.scrubber.scrub(text)
+                    self.assertNotIn(value, clean)
+                    self.assertIn("-p<redacted> db", clean)
+                    self.assertTrue(clean.endswith("\necho after"))
+                    self.assertEqual(self.scrubber.scrub(clean), clean)
+        for flag in ("--password", "-p"):
+            text = f"mysql {flag} \\\n  {value} db"
+            clean = self.scrubber.scrub(text)
+            self.assertNotIn(value, clean)
+            self.assertEqual(self.scrubber.scrub(clean), clean)
+        # An escaped backslash or a finished command must not carry mysql scope.
+        for head in ("mysql -u root", "mysql -u root " + "\\" * 2, "echo ready \\"):
+            text = head + f"\n  -p{value} db"
+            self.assertEqual(self.scrubber.scrub(text), text)
+        text = f"mysql \\\n  -p{value} db; echo \\\n  -pkeep"
+        self.assertTrue(self.scrubber.scrub(text).endswith("\n  -pkeep"))
+
+    def test_credential_quote_concatenation_includes_spaces_in_later_segments(
+        self,
+    ) -> None:
+        first = "fictional" + "Joined42"
+        second = "fictional" + "Spaced42"
+        for prefix in ("curl --password ", "API_TOKEN=", "mysql -p"):
+            for value in (
+                f"\"{first}\"'{second} tail'",
+                f"'{first}'bare\"{second} tail\"'last part'",
+            ):
+                with self.subTest(prefix=prefix, quoted=value[0]):
+                    clean = self.scrubber.scrub(prefix + value + "; echo after")
+                    self.assertEqual(clean, prefix + "<redacted>; echo after")
+                    self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_pgp_private_key_blocks_are_redacted_whole(self) -> None:
+        material = "fictional" + "PgpBody42"
+        checksum = "=" + "Ab42"
+        text = (
+            "echo before\n-----BEGIN PGP PRIVATE KEY BLOCK-----\n\n"
+            + material
+            + "\nshort\n"
+            + checksum
+            + "\n-----END PGP PRIVATE KEY BLOCK-----\necho after\n"
+        )
+        clean = self.scrubber.scrub(text)
+        self.assertEqual(clean, "echo before\n<private-key>\necho after\n")
+        self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_quoted_credential_near_matches_scrub_in_bounded_time(self) -> None:
+        # Missing -AsPlainText forces the value matcher to reject the input.
+        # Escaped quotes must not have exponentially many segmentations.
+        sample = "ConvertTo-SecureString " + '\\"x\\"' * 800
+        program = (
+            "from charter_replay.importer import Scrubber; "
+            f"Scrubber().scrub({sample!r})"
+        )
+        started = time.monotonic()
+        result = subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            timeout=10,
+            check=True,
+        )
+        self.assertEqual(result.stdout, b"")
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_escaped_bare_credentials_near_limit_scrub_in_bounded_time(self) -> None:
+        prefix = "tool --password foo"
+        tail = "SecretTail"
+        # Stay below the line guard so the matcher must consume every escape.
+        escapes = (r"\\\"" * 1024)[: 4095 - len(prefix) - len(tail)]
+        sample = prefix + escapes + tail
+        self.assertEqual(len(sample), 4095)
+        program = (
+            "from charter_replay.importer import Scrubber; "
+            "s = Scrubber(); "
+            f"clean = s.scrub({sample!r}); "
+            "assert 'SecretTail' not in clean; "
+            "assert clean == 'tool --password <redacted>'; "
+            "assert s.scrub(clean) == clean"
+        )
+        started = time.monotonic()
+        result = subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertEqual(result.stdout, b"")
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_cross_line_credential_state_scrubs_many_short_lines_in_bounded_time(
+        self,
+    ) -> None:
+        program = (
+            "from charter_replay.importer import Scrubber; "
+            "s = Scrubber(); "
+            "value = 'fictional' + 'Timing42'; "
+            "sample = 'password:\\n\\n' + value + '\\n' "
+            "+ 'mysql ' + chr(92) + '\\n  -p' + value + '\\n' "
+            "+ 'API_TOKEN=\"' + value + '\\n' + value + '\"\\n'; "
+            "text = sample * 10000; "
+            "clean = s.scrub(text); "
+            "assert value not in clean; "
+            "assert s.scrub(clean) == clean"
+        )
+        started = time.monotonic()
+        result = subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            timeout=10,
+            check=True,
+        )
+        self.assertEqual(result.stdout, b"")
+        self.assertLess(time.monotonic() - started, 10)
 
     def test_rescans_keep_the_earlier_variant_on_equal_redaction(self) -> None:
         self.assertEqual(
