@@ -347,6 +347,69 @@ class ScrubberTests(unittest.TestCase):
                 self.assertEqual(clean, "echo <token>/home/<user>/notes")
                 self.assertEqual(self.scrubber.scrub(clean), clean)
 
+    def test_double_quoted_credentials_consume_backslash_escapes(self) -> None:
+        for prefix in (
+            "tool --password ",
+            "PASSWORD=",
+            "api_key: ",
+            "mysql -p",
+            "ConvertTo-SecureString ",
+        ):
+            for value, secrets in (
+                (r'"ab\"cd ef"', ("ab", "cd", "ef")),
+                (r'"x\\\" y"', ("x", " y")),
+            ):
+                for context in ("", "password:\n"):
+                    with self.subTest(prefix=prefix, value=value, context=context):
+                        tail = (
+                            " -AsPlainText next"
+                            if prefix == "ConvertTo-SecureString "
+                            else " next"
+                        )
+                        clean = self.scrubber.scrub(context + prefix + value + tail)
+                        for secret in secrets:
+                            self.assertNotIn(secret, clean.removesuffix(tail))
+                        self.assertIn("<redacted>", clean)
+                        self.assertTrue(clean.endswith(tail))
+                        self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_multiline_double_quoted_credentials_consume_backslash_escapes(
+        self,
+    ) -> None:
+        for prefix in ("tool --password ", "PASSWORD=", "api_key: "):
+            with self.subTest(prefix=prefix):
+                text = prefix + '"ab\\"cd\nef" next\necho after'
+                clean = self.scrubber.scrub(text)
+                for secret in ("ab", "cd", "ef"):
+                    self.assertNotIn(secret, clean)
+                self.assertTrue(clean.endswith(" next\necho after"))
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_escaped_backslash_before_closing_quote_preserves_next_word(self) -> None:
+        for prefix in ("tool --password ", "PASSWORD=", "api_key: "):
+            for value in (r'"abc\\"', '"ab\nc\\\\"'):
+                with self.subTest(prefix=prefix, value=value):
+                    clean = self.scrubber.scrub(prefix + value + " next\necho after")
+                    for secret in ("ab", "c\\\\"):
+                        self.assertNotIn(secret, clean)
+                    self.assertTrue(clean.endswith(" next\necho after"))
+                    self.assertEqual(self.scrubber.scrub(clean), clean)
+        # Shell single quotes close even when preceded by a backslash.
+        clean = self.scrubber.scrub("tool --password 'abc\\' next")
+        self.assertEqual(clean, "tool --password <redacted> next")
+        self.assertEqual(self.scrubber.scrub(clean), clean)
+
+    def test_json_escaped_quotes_preserve_neighbouring_fields_and_lines(self) -> None:
+        for value in (r'"ab\"cd ef"', r'"x\\\" y"', r'"abc\\"'):
+            with self.subTest(value=value):
+                text = '\'{"api_key":' + value + ',"b":1}\'\necho after'
+                clean = self.scrubber.scrub(text)
+                for secret in ("ab", "cd", "ef", "x", " y"):
+                    self.assertNotIn(secret, clean)
+                self.assertIn(',"b":1}', clean)
+                self.assertTrue(clean.endswith("\necho after"))
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
     def test_credential_values_on_the_next_nonempty_line_are_redacted(self) -> None:
         value = "fictional" + "NextValue42"
         for ending in ("\n", "\r\n", "\r", "\u2028"):
@@ -602,6 +665,38 @@ class ScrubberTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertEqual(result.stdout, b"")
         self.assertLess(time.monotonic() - started, 10)
+
+    def test_double_quoted_escapes_near_limit_scrub_in_bounded_time(self) -> None:
+        # The second prefix lacks -AsPlainText, forcing a rejected near-match.
+        for prefix in ('tool --password "', 'ConvertTo-SecureString "'):
+            with self.subTest(prefix=prefix):
+                tail = ' SecretTail"'
+                room = 4095 - len(prefix) - len(tail)
+                escapes = r"\"" * (room // 2)
+                sample = prefix + escapes + "x" * (room % 2) + tail
+                self.assertEqual(len(sample), 4095)
+                assertion = (
+                    "assert clean == 'tool --password <redacted>'; "
+                    if prefix.startswith("tool")
+                    else f"assert clean == {sample!r}; "
+                )
+                program = (
+                    "from charter_replay.importer import Scrubber; "
+                    "s = Scrubber(); "
+                    f"clean = s.scrub({sample!r}); "
+                    + assertion
+                    + "assert s.scrub(clean) == clean"
+                )
+                started = time.monotonic()
+                result = subprocess.run(
+                    [sys.executable, "-c", program],
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr.decode())
+                self.assertEqual(result.stdout, b"")
+                self.assertLess(time.monotonic() - started, 10)
 
     def test_cross_line_credential_state_scrubs_many_short_lines_in_bounded_time(
         self,
