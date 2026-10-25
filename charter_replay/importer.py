@@ -52,7 +52,7 @@ _PRIVATE_KEY = re.compile(
 )
 _QUOTED_CREDENTIAL = (
     rf"\\\"[^\\\"{_LINE_BREAKS}]*\\\"|"
-    rf'"[^"{_LINE_BREAKS}]*"|'
+    rf'"(?:[^"\\{_LINE_BREAKS}]|\\.)*+"|'
     rf"'[^'{_LINE_BREAKS}]*'"
 )
 _CREDENTIAL_NAME = (
@@ -103,7 +103,9 @@ def _redact_credential(match: re.Match[str]) -> str:
     # A bare value can end at the enclosing command's quote. Preserve that
     # unmatched delimiter, but still remove complete quote-concatenated values.
     closing = value[-1] if value[-1] in "\"'" else ""
-    if closing and value.count(closing) % 2 == 0:
+    if closing and (
+        value.count(closing) % 2 == 0 or _CLOSED_CREDENTIAL.fullmatch(value)
+    ):
         closing = ""
     return match.group(1) + "<redacted>" + closing
 
