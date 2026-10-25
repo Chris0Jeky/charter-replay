@@ -452,6 +452,21 @@ class ScrubberTests(unittest.TestCase):
                 self.assertEqual(clean.split("\n", 1)[1], "<redacted>" + tail + "\n")
                 self.assertEqual(self.scrubber.scrub(clean), clean)
 
+    def test_an_unbalanced_earlier_quote_does_not_shorten_a_multiline_value(
+        self,
+    ) -> None:
+        # The quote scan miscounts after an apostrophe or a carried-over quote;
+        # a value that continues on the key's line must still carry (#70 review).
+        for text in (
+            "echo don't; export TOKEN='abc\ndef ghiSecret\njklSecret'\n",
+            'stuff" && export API_TOKEN="abc\ndef ghiSecret"\n',
+        ):
+            with self.subTest(text=text):
+                clean = self.scrubber.scrub(text)
+                self.assertNotIn("ghiSecret", clean)
+                self.assertNotIn("jklSecret", clean)
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
     def test_quoted_prompt_does_not_hide_multiline_credentials(self) -> None:
         first, last = "abc" + "Secret", "tail" + "Secret"
         following = "echo one\n\techo two  \n"

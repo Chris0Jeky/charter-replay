@@ -394,8 +394,13 @@ class Scrubber:
                         elif char in "\"'":
                             shell_quote = char
                         shell_index += 1
+                    # Only a quote that closes the string AND ends the line is
+                    # a prompt (read -p "Password: "): with text after it the
+                    # scan may be wrong about the quote, so carry as before.
                     if value_start == len(command) or (
-                        shell_quote and command[value_start] == shell_quote
+                        shell_quote
+                        and command[value_start] == shell_quote
+                        and not command[value_start + 1 :].strip()
                     ):
                         waiting = True
                     elif command[value_start] in "\"'":
