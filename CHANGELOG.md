@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A hook that exits just as the output watchdog fires is no longer reported as
+  `start-failed` on macOS: the group kill answers EPERM for an exited-but-unreaped
+  child, and the runner now reaps it and classifies the real outcome (an
+  `output-limit` overflow, a crash, or the exit code).
+
 - `import` scrubbing follows credentials across lines: a value on the line after
   its key or flag, multi-line quoted values (up to 16 lines), `mysql` backslash
   continuations, quote-concatenated values with spaces, and whole PGP private
