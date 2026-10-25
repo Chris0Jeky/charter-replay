@@ -115,6 +115,24 @@ class ScrubberTests(unittest.TestCase):
         for secret in ("hunter2hunter2", "abc123def", "S3cretPw"):
             self.assertNotIn(secret, text)
 
+    def test_bare_credentials_consume_backslash_escaped_characters(self) -> None:
+        cases = (
+            (r"tool --password foo\"SecretTail", "tool --password <redacted>"),
+            (r"tool --password=foo\"SecretTail", "tool --password=<redacted>"),
+            (r"PASSWORD=foo\"SecretTail", "PASSWORD=<redacted>"),
+            (r"api_key: foo\"SecretTail", "api_key: <redacted>"),
+            (r"tool --password foo\'SecretTail", "tool --password <redacted>"),
+            (r"tool --password foo\\SecretTail", "tool --password <redacted>"),
+            (r"tool --password foo\XSecretTail", "tool --password <redacted>"),
+            (r"tool --password foo\ SecretTail", "tool --password <redacted>"),
+        )
+        for command, expected in cases:
+            with self.subTest(command=command):
+                clean = self.scrubber.scrub(command)
+                self.assertNotIn("SecretTail", clean)
+                self.assertEqual(clean, expected)
+                self.assertEqual(self.scrubber.scrub(clean), clean)
+
     def test_a_home_name_with_a_space_is_fully_removed(self) -> None:
         scrubber = Scrubber(["Jane Doe", "Jane", "Doe"])
         text = scrubber.scrub(r"cd C:\Users\Jane Doe\repo")
@@ -556,6 +574,32 @@ class ScrubberTests(unittest.TestCase):
             timeout=10,
             check=True,
         )
+        self.assertEqual(result.stdout, b"")
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_escaped_bare_credentials_near_limit_scrub_in_bounded_time(self) -> None:
+        prefix = "tool --password foo"
+        tail = "SecretTail"
+        # Stay below the line guard so the matcher must consume every escape.
+        escapes = (r"\\\"" * 1024)[: 4095 - len(prefix) - len(tail)]
+        sample = prefix + escapes + tail
+        self.assertEqual(len(sample), 4095)
+        program = (
+            "from charter_replay.importer import Scrubber; "
+            "s = Scrubber(); "
+            f"clean = s.scrub({sample!r}); "
+            "assert 'SecretTail' not in clean; "
+            "assert clean == 'tool --password <redacted>'; "
+            "assert s.scrub(clean) == clean"
+        )
+        started = time.monotonic()
+        result = subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertEqual(result.stdout, b"")
         self.assertLess(time.monotonic() - started, 10)
 

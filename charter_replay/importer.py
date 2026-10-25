@@ -61,11 +61,12 @@ _CREDENTIAL_NAME = (
 )
 # Recognise our own marker before a bare value: a second pass must not swallow
 # JSON punctuation and neighbouring fields after an already-redacted value.
-# Escaped quotes belong only to quoted segments, avoiding ambiguous repetition.
+# Bare escapes consume two characters; possessive repetition prevents a quoted
+# segment from being reconsidered as individual escapes on a later near-match.
 _CREDENTIAL_VALUE = (
     r"(<redacted>(?=[,}\]])|(?:"
     + _QUOTED_CREDENTIAL
-    + r"""|(?!\\")[^\s;&|'"])+(?:["'][^\s;&|]*)?|[^\s;&|]+)"""
+    + r"""|\\.|[^\s;&|'"\\])++(?:["'][^\s;&|]*)?|[^\s;&|]+)"""
 )
 _CLOSED_CREDENTIAL = re.compile(_QUOTED_CREDENTIAL)
 _CREDENTIAL_PREFIX = re.compile(
