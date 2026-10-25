@@ -10,6 +10,7 @@ from contextlib import redirect_stderr, redirect_stdout
 import copy
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -218,6 +219,37 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(
             "output could not be sized against the 2048 byte limit", outcome.detail
         )
+
+    def test_a_killpg_refusal_on_an_exited_child_is_not_a_start_failure(self):
+        # macOS answers EPERM, not ESRCH, when the group's only member is a
+        # zombie: the child exits between the watchdog's sizing and the kill
+        # (CI run 40153401924). The kill is stubbed so this holds on any host;
+        # the reap that follows is what proves the child is gone.
+        argv = [sys.executable, "-c", "import sys; sys.stdout.write(' ' * 70000)"]
+        with (
+            tempfile.TemporaryFile() as stdin,
+            tempfile.TemporaryFile() as stdout,
+            tempfile.TemporaryFile() as stderr,
+            mock.patch.object(
+                policy_sources.os,
+                "killpg",
+                side_effect=PermissionError(1, "Operation not permitted"),
+                create=True,
+            ),
+            mock.patch.object(policy_sources.signal, "SIGKILL", 9, create=True),
+        ):
+            returncode, timed_out = policy_sources._run_posix_policy_process(
+                argv,
+                stdin_stream=stdin,
+                stdout_stream=stdout,
+                stderr_stream=stderr,
+                timeout_seconds=10.0,
+                cwd=None,
+                environment=None,
+                output_limit=LIMIT,
+            )
+            self.assertEqual((0, False), (returncode, timed_out))
+            self.assertGreater(os.fstat(stdout.fileno()).st_size, LIMIT)
 
     def test_the_kernel_path_never_sizes_a_stream(self):
         with mock.patch.object(policy_sources.os, "fstat", side_effect=OSError("gone")):
