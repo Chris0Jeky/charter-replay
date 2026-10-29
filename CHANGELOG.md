@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-- A hook that exits just as the output watchdog fires is no longer reported as
-  `start-failed` on macOS: the group kill answers EPERM for an exited-but-unreaped
-  child, and the runner now reaps it and classifies the real outcome (an
-  `output-limit` overflow, a crash, or the exit code).
+- The POSIX runner tolerates `PermissionError` from the group signal and
+  retains bounded direct-child cleanup before classifying the hook outcome.
+  An injected-EPERM regression covers the path after over-limit output.
+  The historical macOS failure cause remains unconfirmed; this is not a
+  guarantee that a refused signal terminates every group member.
 
 - `import` scrubbing follows credentials across lines: a value on the line after
   its key or flag, multi-line quoted values (up to 16 lines), `mysql` backslash

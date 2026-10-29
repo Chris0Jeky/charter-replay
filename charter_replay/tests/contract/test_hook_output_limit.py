@@ -221,10 +221,10 @@ class SupervisorTests(unittest.TestCase):
         )
 
     def test_a_killpg_refusal_on_an_exited_child_is_not_a_start_failure(self):
-        # macOS answers EPERM, not ESRCH, when the group's only member is a
-        # zombie: the child exits between the watchdog's sizing and the kill
-        # (CI run 40153401924). The kill is stubbed so this holds on any host;
-        # the reap that follows is what proves the child is gone.
+        # Inject a group-signal refusal while a child prints past the limit.
+        # The following reap must still recover its successful exit.
+        # This exercises the EPERM path; it does not reproduce or diagnose
+        # the historical macOS incident (CI run 40153401924).
         argv = [sys.executable, "-c", "import sys; sys.stdout.write(' ' * 70000)"]
         with (
             tempfile.TemporaryFile() as stdin,

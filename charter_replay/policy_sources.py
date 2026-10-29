@@ -174,10 +174,10 @@ def _run_posix_policy_process(
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
-        # macOS answers EPERM, not ESRCH, when the group's only member is an
-        # unreaped zombie (the child exited since the last poll). We own the
-        # group, so a real refusal still surfaces below: the reap times out,
-        # the child is killed directly, and "did not terminate" is raised.
+        # Retain bounded direct-child cleanup after a group-signal refusal.
+        # The regression injects EPERM; it does not diagnose the historical
+        # macOS incident. Reaping the direct child does not prove that all
+        # members of a group whose signal was refused have terminated.
         pass
     try:
         process.wait(timeout=_PROCESS_CLEANUP_GRACE_SECONDS)
